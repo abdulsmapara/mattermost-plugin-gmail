@@ -1,0 +1,48 @@
+{
+    "id": "mattermost-plugin-gmail",
+    "name": "Mattermost Gmail Bot",
+    "description": "Integration of Mattermost with Gmail - a mail service by Google",
+    "version": "0.1.0",
+    "min_server_version": "5.19.0",
+    "server": {
+        "executables": {
+            "linux-amd64": "server/dist/plugin-linux-amd64",
+            "darwin-amd64": "server/dist/plugin-darwin-amd64",
+            "windows-amd64": "server/dist/plugin-windows-amd64.exe"
+        }
+    },
+    "settings_schema": {
+        "header": "The Gmail plugin for Mattermost",
+        "footer": "Made with Love and Support from Mattermost by Abdul Sattar Mapara",
+        "settings": [
+            {
+                "key": "GmailOAuthClientID",
+                "display_name": "Google (Gmail) Client ID",
+                "type": "text",
+                "placeholder": "Please copy client ID over from Google API console for Gmail API",
+                "help_text": "The client ID for the OAuth app registered with Google Cloud"
+            },
+            {
+                "key": "GmailOAuthSecret",
+                "display_name": "Gmail Secret",
+                "type": "text",
+                "placeholder": "Please copy secret over from Google (gmail) OAuth application",
+                "help_text": "The client secret for the OAuth app registered with Google Cloud."
+            },
+            {
+                "key": "EncryptionKey",
+                "display_name": "Plugin Encryption Key",
+                "type": "generated",
+                "placeholder": "Generate the key and store before connecting the account",
+                "help_text": "The AES encryption key internally used in plugin to encrypt stored access tokens."
+            },
+            {
+                "key": "WebhookSecret",
+                "display_name": "Webhook Secret Key",
+                "type": "generated",
+                "placeholder": "Generate the key and store before connecting the account",
+                "help_text": "This Secret key will be used to uniquely identify incoming webhook requests if any."
+            }
+        ]
+    }
+}
