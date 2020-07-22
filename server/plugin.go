@@ -13,7 +13,7 @@ import (
 type Plugin struct {
 	plugin.MattermostPlugin
 
-	// UserID of issueResolver search bot
+	// UserID of gmail bot
 	gmailBotID string
 
 	// configurationLock synchronizes access to the configuration.
