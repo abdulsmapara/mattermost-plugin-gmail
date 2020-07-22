@@ -87,8 +87,14 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Please provide the ID of "+arguments[2])
 		return &model.CommandResponse{}, nil
 	}
-	requestedID := arguments[3]
-	gmailID := p.getGmailID(args.UserId)
+	rfcID := arguments[3]
+
+	gmailID, err := p.getGmailID(args.UserId)
+	if err != nil {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
+		return &model.CommandResponse{}, nil
+	}
+
 	gmailService, err := p.getGmailService(args.UserId)
 	if err != nil {
 		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
@@ -96,16 +102,32 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 	}
 
 	if queryType == "thread" {
-		thread, err := gmailService.Users.Threads.Get("me", requestedID).Do()
-		if err != nil {
-			p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
+		threadID, threadIDErr := p.getThreadID(args.UserId, gmailID, rfcID)
+		if threadIDErr != nil {
+			p.sendMessageFromBot(args.ChannelId, args.UserId, true, threadIDErr.Error())
 			return &model.CommandResponse{}, nil
 		}
-		p.sendMessageFromBot(args.ChannelId, "", false, thread.Messages[0].Raw)
+		thread, threadErr := gmailService.Users.Threads.Get(gmailID, threadID).Do()
+		if threadErr != nil {
+			p.sendMessageFromBot(args.ChannelId, args.UserId, true, threadErr.Error())
+			return &model.CommandResponse{}, nil
+		}
+		p.sendMessageFromBot(args.ChannelId, "", false, thread.Snippet)
 		return &model.CommandResponse{}, nil
 	}
 	// if queryType == "mail" =>
-	// Explicit condition check not required
+	// Note that explicit condition check is not required
+	messageID, err := p.getMessageID(args.UserId, gmailID, rfcID)
+	if err != nil {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
+		return &model.CommandResponse{}, nil
+	}
+	message, err := gmailService.Users.Messages.Get(gmailID, messageID).Do()
+	if err != nil {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
+		return &model.CommandResponse{}, nil
+	}
+	p.sendMessageFromBot(args.ChannelId, "", false, message.Snippet)
 
 	return &model.CommandResponse{}, nil
 }

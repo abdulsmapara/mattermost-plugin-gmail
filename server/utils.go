@@ -10,6 +10,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
+	accessAPI "google.golang.org/api/oauth2/v2" // Package oauth2 provides access to the Google OAuth2 API
 	"google.golang.org/api/option"
 )
 
@@ -94,4 +95,65 @@ func (p *Plugin) getGmailService(userID string) (*gmail.Service, error) {
 	}
 
 	return gmailService, nil
+}
+
+// getOAuthService generates OAuth Service
+func (p *Plugin) getOAuthService(userID string) (*accessAPI.Service, error) {
+	var token oauth2.Token
+
+	tokenInByte, appErr := p.API.KVGet(userID + "gmailToken")
+	if appErr != nil {
+		return nil, errors.New(appErr.DetailedError)
+	}
+	json.Unmarshal(tokenInByte, &token)
+	ctx := context.Background()
+	config := p.getOAuthConfig()
+	tokenSource := config.TokenSource(ctx, &token)
+	oauth2Service, err := accessAPI.NewService(ctx, option.WithTokenSource(tokenSource))
+	if err != nil {
+		return nil, err
+	}
+
+	return oauth2Service, nil
+}
+
+// getGmailID retrieves the gmail ID of the user
+func (p *Plugin) getGmailID(userID string) (string, error) {
+	oauth2Service, err := p.getOAuthService(userID)
+	if err != nil {
+		return "", err
+	}
+	userInfo, err := oauth2Service.Userinfo.Get().Do()
+	if err != nil {
+		return "", err
+	}
+	return userInfo.Email, nil
+}
+
+// getThreadID generates ID of thread from rfcID of the mail in the thread
+func (p *Plugin) getThreadID(userID string, gmailID string, rfcID string) (string, error) {
+	gmailService, err := p.getGmailService(userID)
+	if err != nil {
+		return "", err
+	}
+	listResponse, err := gmailService.Users.Messages.List(gmailID).Q("rfc822msgid:" + rfcID).Do()
+	if err != nil {
+		return "", err
+	}
+
+	return listResponse.Messages[0].ThreadId, nil
+}
+
+// getMessageID generates ID of mail/message from rfcID of the mail/message
+func (p *Plugin) getMessageID(userID string, gmailID string, rfcID string) (string, error) {
+	gmailService, err := p.getGmailService(userID)
+	if err != nil {
+		return "", err
+	}
+	listResponse, err := gmailService.Users.Messages.List(gmailID).Q("rfc822msgid:" + rfcID).Do()
+	if err != nil {
+		return "", err
+	}
+
+	return listResponse.Messages[0].Id, nil
 }
