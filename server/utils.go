@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	// "github.com/mattermost/mattermost-server/v5/mlog"
+	"github.com/dvsekhvalnov/jose2go/base64url"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
@@ -156,4 +158,63 @@ func (p *Plugin) getMessageID(userID string, gmailID string, rfcID string) (stri
 	}
 
 	return listResponse.Messages[0].Id, nil
+}
+
+func decodeBase64URL(urlInBase64 string) (string, error) {
+	decoded, err := base64url.Decode(urlInBase64)
+	if err != nil {
+		return "", err
+	}
+	return string(decoded), nil
+}
+
+func (p *Plugin) getMessageDetails(message string) (string, string) {
+	if len(message) == 0 {
+		return "", ""
+	}
+	// parse message line by line to find "Subject", "From", "To"
+	// split on new line character
+	linesInMessage := strings.Split(message, "\n")
+	subject := ""
+	from := ""
+	to := ""
+	boundary := ""
+	body := ""
+	contentTransferEncoding := ""
+	bodyBegins := false
+	for _, line := range linesInMessage {
+		if strings.HasPrefix(line, "Subject") {
+			subject = strings.Split(line, ":")[1]
+		} else if strings.HasPrefix(line, "From") {
+			from = strings.Split(line, ":")[1]
+		} else if strings.HasPrefix(line, "To") {
+			to = strings.Split(line, ":")[1]
+		} else if strings.Contains(line, "Content-Type: multipart/alternative; boundary=") {
+			boundary = strings.Split(line, "=")[1]
+			boundary = strings.ReplaceAll(boundary, "\"", "")
+		} else if strings.HasPrefix(line, "--") {
+			if bodyBegins {
+				bodyBegins = false
+				break
+			}
+			bodyBegins = true
+		} else if bodyBegins {
+			if strings.HasPrefix(line, "Content-Transfer-Encoding:") {
+				contentTransferEncoding = strings.Split(line, ":")[1]
+			}
+			if strings.HasPrefix(line, "Content-Type:") || strings.HasPrefix(line, "Content-Transfer-Encoding:") || len(line) == 0 {
+				continue
+			}
+			body += line
+		}
+	}
+	fmt.Println("Boundary: " + boundary)
+	fmt.Println("body: " + body)
+	fmt.Println(from + "\n" + to)
+	finalBody := body
+	if contentTransferEncoding == "base64" {
+		finalBody, _ = decodeBase64URL(body)
+	}
+
+	return subject, finalBody
 }

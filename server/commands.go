@@ -107,27 +107,37 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 			p.sendMessageFromBot(args.ChannelId, args.UserId, true, threadIDErr.Error())
 			return &model.CommandResponse{}, nil
 		}
-		thread, threadErr := gmailService.Users.Threads.Get(gmailID, threadID).Do()
+		thread, threadErr := gmailService.Users.Threads.Get(gmailID, threadID).Format("raw").Do()
 		if threadErr != nil {
 			p.sendMessageFromBot(args.ChannelId, args.UserId, true, threadErr.Error())
 			return &model.CommandResponse{}, nil
 		}
-		p.sendMessageFromBot(args.ChannelId, "", false, thread.Snippet)
+		p.sendMessageFromBot(args.ChannelId, "", false, thread.Messages[0].Raw)
 		return &model.CommandResponse{}, nil
 	}
 	// if queryType == "mail" =>
 	// Note that explicit condition check is not required
 	messageID, err := p.getMessageID(args.UserId, gmailID, rfcID)
 	if err != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
 		return &model.CommandResponse{}, nil
 	}
-	message, err := gmailService.Users.Messages.Get(gmailID, messageID).Do()
+	message, err := gmailService.Users.Messages.Get(gmailID, messageID).Format("raw").Do()
 	if err != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
 		return &model.CommandResponse{}, nil
 	}
-	p.sendMessageFromBot(args.ChannelId, "", false, message.Snippet)
+	base64URLMessage := message.Raw
+	fmt.Println("base64URLMessage " + base64URLMessage)
+	plainTextMessage, err := decodeBase64URL(base64URLMessage)
+	fmt.Println("plainTextMessage " + plainTextMessage)
+	if err != nil {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
+		return &model.CommandResponse{}, nil
+	}
+	// Extract Subject and Body (base64url) from the message. TODO: Add attachments.
+	subject, body := p.getMessageDetails(plainTextMessage)
+	p.sendMessageFromBot(args.ChannelId, "", false, "##### Subject :"+subject+"\n"+"##### Message:\n"+body)
 
 	return &model.CommandResponse{}, nil
 }

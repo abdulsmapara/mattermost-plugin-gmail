@@ -3,6 +3,7 @@ module github.com/mattermost/mattermost-plugin-gmail
 go 1.12
 
 require (
+	github.com/dvsekhvalnov/jose2go v0.0.0-20180829124132-7f401d37b68a
 	github.com/mattermost/mattermost-server/v5 v5.24.0
 	github.com/mholt/archiver/v3 v3.3.0
 	github.com/pkg/errors v0.9.1
