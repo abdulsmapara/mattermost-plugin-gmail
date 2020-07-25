@@ -100,6 +100,7 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
 		return &model.CommandResponse{}, nil
 	}
+	p.API.LogInfo("gmailService created successfully")
 
 	if queryType == "thread" {
 		threadID, threadIDErr := p.getThreadID(args.UserId, gmailID, rfcID)
@@ -117,27 +118,33 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 	}
 	// if queryType == "mail" =>
 	// Note that explicit condition check is not required
+
 	messageID, err := p.getMessageID(args.UserId, gmailID, rfcID)
 	if err != nil {
 		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
 		return &model.CommandResponse{}, nil
 	}
+	p.API.LogInfo("Extracted Message ID from rfc ID successfully")
+
 	message, err := gmailService.Users.Messages.Get(gmailID, messageID).Format("raw").Do()
 	if err != nil {
 		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
 		return &model.CommandResponse{}, nil
 	}
+	p.API.LogInfo("Message extracted successfully")
+
 	base64URLMessage := message.Raw
 	fmt.Println("base64URLMessage " + base64URLMessage)
-	plainTextMessage, err := decodeBase64URL(base64URLMessage)
-	fmt.Println("plainTextMessage " + plainTextMessage)
+	plainTextMessage, err := p.decodeBase64URL(base64URLMessage)
 	if err != nil {
 		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
 		return &model.CommandResponse{}, nil
 	}
+	fmt.Println("plainTextMessage " + plainTextMessage)
+
 	// Extract Subject and Body (base64url) from the message. TODO: Add attachments.
 	subject, body := p.getMessageDetails(plainTextMessage)
-	p.sendMessageFromBot(args.ChannelId, "", false, "##### Subject :"+subject+"\n"+"##### Message:\n"+body)
+	p.sendMessageFromBot(args.ChannelId, "", false, "###### "+subject+"\n"+"###### Message:\n"+body)
 
 	return &model.CommandResponse{}, nil
 }

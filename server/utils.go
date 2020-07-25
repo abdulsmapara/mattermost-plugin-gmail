@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
 	// "github.com/mattermost/mattermost-server/v5/mlog"
-	"github.com/dvsekhvalnov/jose2go/base64url"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
@@ -160,11 +160,25 @@ func (p *Plugin) getMessageID(userID string, gmailID string, rfcID string) (stri
 	return listResponse.Messages[0].Id, nil
 }
 
-func decodeBase64URL(urlInBase64 string) (string, error) {
-	decoded, err := base64url.Decode(urlInBase64)
+func (p *Plugin) decodeBase64URL(urlInBase64 string) (string, error) {
+	data := strings.Replace(urlInBase64, "-", "+", -1) // 62nd char of encoding
+	data = strings.Replace(data, "_", "/", -1)         // 63rd char of encoding
+
+	switch len(data) % 4 { // Pad with trailing '='s
+	case 0: // no padding
+	case 2:
+		data += "==" // 2 pad chars
+	case 3:
+		data += "=" // 1 pad char
+	default:
+		fmt.Println("ERROR OCCURRED")
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
 		return "", err
 	}
+
 	return string(decoded), nil
 }
 
@@ -176,23 +190,22 @@ func (p *Plugin) getMessageDetails(message string) (string, string) {
 	// split on new line character
 	linesInMessage := strings.Split(message, "\n")
 	subject := ""
-	from := ""
-	to := ""
 	boundary := ""
 	body := ""
 	contentTransferEncoding := ""
 	bodyBegins := false
 	for _, line := range linesInMessage {
+
+		if len(strings.TrimSpace(line)) == 0 {
+			continue
+		}
+
 		if strings.HasPrefix(line, "Subject") {
-			subject = strings.Split(line, ":")[1]
-		} else if strings.HasPrefix(line, "From") {
-			from = strings.Split(line, ":")[1]
-		} else if strings.HasPrefix(line, "To") {
-			to = strings.Split(line, ":")[1]
+			subject = line
 		} else if strings.Contains(line, "Content-Type: multipart/alternative; boundary=") {
 			boundary = strings.Split(line, "=")[1]
 			boundary = strings.ReplaceAll(boundary, "\"", "")
-		} else if strings.HasPrefix(line, "--") {
+		} else if strings.HasPrefix(line, "--"+boundary) {
 			if bodyBegins {
 				bodyBegins = false
 				break
@@ -201,19 +214,17 @@ func (p *Plugin) getMessageDetails(message string) (string, string) {
 		} else if bodyBegins {
 			if strings.HasPrefix(line, "Content-Transfer-Encoding:") {
 				contentTransferEncoding = strings.Split(line, ":")[1]
+				continue
 			}
-			if strings.HasPrefix(line, "Content-Type:") || strings.HasPrefix(line, "Content-Transfer-Encoding:") || len(line) == 0 {
+			if strings.HasPrefix(line, "Content-Type:") {
 				continue
 			}
 			body += line
 		}
 	}
-	fmt.Println("Boundary: " + boundary)
-	fmt.Println("body: " + body)
-	fmt.Println(from + "\n" + to)
 	finalBody := body
-	if contentTransferEncoding == "base64" {
-		finalBody, _ = decodeBase64URL(body)
+	if strings.TrimSpace(contentTransferEncoding) == "base64" {
+		finalBody, _ = p.decodeBase64URL(body)
 	}
 
 	return subject, finalBody
