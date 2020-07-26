@@ -134,16 +134,13 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 	p.API.LogInfo("Message extracted successfully")
 
 	base64URLMessage := message.Raw
-	fmt.Println("base64URLMessage " + base64URLMessage)
 	plainTextMessage, err := p.decodeBase64URL(base64URLMessage)
 	if err != nil {
 		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
 		return &model.CommandResponse{}, nil
 	}
-	fmt.Println("plainTextMessage " + plainTextMessage)
-
 	// Extract Subject and Body (base64url) from the message. TODO: Add attachments.
-	subject, body := p.getMessageDetails(plainTextMessage)
+	subject, body, _ := p.parseMessage(plainTextMessage)
 	p.sendMessageFromBot(args.ChannelId, "", false, "###### "+subject+"\n"+"###### Message:\n"+body)
 
 	return &model.CommandResponse{}, nil

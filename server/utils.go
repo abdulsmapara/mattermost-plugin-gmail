@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	// "github.com/mattermost/mattermost-server/v5/mlog"
+	"github.com/DusanKasan/parsemail"
+	html2markdown "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
@@ -166,25 +168,53 @@ func (p *Plugin) decodeBase64URL(urlInBase64 string) (string, error) {
 
 	switch len(data) % 4 { // Pad with trailing '='s
 	case 0: // no padding
+		break
 	case 2:
 		data += "==" // 2 pad chars
+		break
 	case 3:
 		data += "=" // 1 pad char
-	default:
-		fmt.Println("ERROR OCCURRED")
+		break
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
+		fmt.Println(err.Error())
 		return "", err
 	}
 
 	return string(decoded), nil
 }
 
-func (p *Plugin) getMessageDetails(message string) (string, string) {
+func (p *Plugin) parseMessage(message string) (string, string, error) {
+	// Use parser for email
+	reader := strings.NewReader(message)
+
+	email, err := parsemail.Parse(reader) // returns Email struct and error
+	if err != nil {
+		// return details from self parsed message
+		p.API.LogInfo("Error in using parsemail package: " + err.Error())
+		return p.getMessageDetails(message)
+	}
+
+	// Prefer HTML if available
+	if email.HTMLBody != "" {
+		mailBody, html2mdErr := html2markdown.NewConverter("", true, nil).ConvertString(email.HTMLBody)
+		if html2mdErr == nil {
+			return email.Subject, mailBody, nil
+		}
+		p.API.LogInfo("Error in converting html to markdown: " + html2mdErr.Error())
+	}
+
+	return email.Subject, email.TextBody, nil
+}
+
+// TODO: Support "quote-printable"
+// TODO: Use net/mail package for parsing email message
+// input- message as shown in "Show Original" tab of mail
+func (p *Plugin) getMessageDetails(message string) (string, string, error) {
 	if len(message) == 0 {
-		return "", ""
+		return "", "", nil
 	}
 	// parse message line by line to find "Subject", "From", "To"
 	// split on new line character
@@ -193,39 +223,75 @@ func (p *Plugin) getMessageDetails(message string) (string, string) {
 	boundary := ""
 	body := ""
 	contentTransferEncoding := ""
+	contentType := "text/plain"
 	bodyBegins := false
+	checkContentDetails := true
+	htmlBody := ""
 	for _, line := range linesInMessage {
 
 		if len(strings.TrimSpace(line)) == 0 {
 			continue
 		}
 
-		if strings.HasPrefix(line, "Subject") {
+		if subject == "" && strings.HasPrefix(line, "Subject") {
 			subject = line
-		} else if strings.Contains(line, "Content-Type: multipart/alternative; boundary=") {
+		} else if bodyBegins == false && strings.Contains(line, "Content-Type: multipart/alternative; boundary=") {
 			boundary = strings.Split(line, "=")[1]
 			boundary = strings.ReplaceAll(boundary, "\"", "")
 		} else if strings.HasPrefix(line, "--"+boundary) {
 			if bodyBegins {
-				bodyBegins = false
-				break
+				checkContentDetails = true
+			} else {
+				bodyBegins = true
 			}
-			bodyBegins = true
 		} else if bodyBegins {
-			if strings.HasPrefix(line, "Content-Transfer-Encoding:") {
-				contentTransferEncoding = strings.Split(line, ":")[1]
+			if checkContentDetails && strings.HasPrefix(line, "Content-Transfer-Encoding:") {
+				contentTransferEncoding = strings.TrimSpace(strings.Split(line, ":")[1])
 				continue
 			}
-			if strings.HasPrefix(line, "Content-Type:") {
+			if checkContentDetails && strings.HasPrefix(line, "Content-Type:") {
+				contentType = strings.TrimSpace(strings.Split(strings.Split(line, ";")[0], ":")[1])
 				continue
 			}
-			body += line
+			if contentType == "text/html" {
+				htmlBody += line
+			} else {
+				body += line
+			}
+			// do not check content details once body begins
+			checkContentDetails = false
 		}
 	}
-	finalBody := body
-	if strings.TrimSpace(contentTransferEncoding) == "base64" {
-		finalBody, _ = p.decodeBase64URL(body)
+	fmt.Println("contentType:" + contentType)
+	fmt.Println(htmlBody)
+	if htmlBody != "" {
+		// Currently quoted-printable is giving errors
+		if contentTransferEncoding != "quoted-printable" {
+			finalBody, html2mdErr := html2markdown.NewConverter("", true, nil).ConvertString(htmlBody)
+			if html2mdErr != nil {
+				fmt.Println("Error in converting from html to markdown: " + html2mdErr.Error())
+			} else {
+				return subject, finalBody, nil
+			}
+		}
 	}
 
-	return subject, finalBody
+	body = strings.ReplaceAll(body, "=\n", "\n")
+
+	finalBody := body
+	if contentTransferEncoding == "base64" {
+		body = strings.ReplaceAll(body, "\r", "")
+		body = strings.ReplaceAll(body, "\n", "")
+		finalBody, _ = p.decodeBase64URL(body)
+	}
+	// if contentTransferEncodingPlain == "quoted-printable" {
+	// 	decodedBody, quotedPrintableErr := ioutil.ReadAll(quotedprintable.NewReader(strings.NewReader(finalBody)))
+	// 	if quotedPrintableErr == nil {
+	// 		finalBody = fmt.Sprintf("%s", decodedBody)
+	// 	} else {
+	// 		fmt.Println(quotedPrintableErr)
+	// 	}
+	// }
+
+	return subject, finalBody, nil
 }
