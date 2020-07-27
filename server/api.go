@@ -125,7 +125,6 @@ func (p *Plugin) completeGmailConnection(w http.ResponseWriter, r *http.Request)
 	}
 
 	p.API.KVSet(userID+"gmailToken", tokenJSON)
-	fmt.Println(token)
 	// Post intro post
 	message := "#### Welcome to the Mattermost Gmail Plugin!\n" +
 		"You've successfully connected your Mattermost account to your Gmail.\n" +

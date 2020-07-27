@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	// "github.com/mattermost/mattermost-server/v5/mlog"
 	"github.com/DusanKasan/parsemail"
@@ -19,7 +20,7 @@ import (
 )
 
 // CreateBotDMPost creates a post as gmail bot to the user directly
-func (p *Plugin) CreateBotDMPost(userID, message string) error {
+func (p *Plugin) CreateBotDMPost(userID, message string) (string, error) {
 	return p.sendMessageFromBot("", userID, false, message)
 }
 
@@ -28,19 +29,19 @@ func (p *Plugin) CreateBotDMPost(userID, message string) error {
 // 2. "For DM Eph post" : [0]channelID, [X]userID, [X]isEphemeralPost.
 // 3. "For Ch Reg post" : [X]channelID, [0]userID, [0]isEphemeralPost.
 // 4. "For Ch Eph post" : [X]channelID, [X]userID, [X]isEphemeralPost.
-func (p *Plugin) sendMessageFromBot(_channelID string, userID string, isEphemeralPost bool, message string) error {
+func (p *Plugin) sendMessageFromBot(_channelID string, userID string, isEphemeralPost bool, message string) (string, error) {
 	var channelID string = _channelID
 
 	// If its nil then get the DM channel of bot and user
 	if len(channelID) == 0 {
 		if len(userID) == 0 {
-			return errors.New("User and Channel ID both are undefined")
+			return "", errors.New("User and Channel ID both are undefined")
 		}
 
 		// Get the Bot Direct Message channel
 		directChannel, err := p.API.GetDirectChannel(userID, p.gmailBotID)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		channelID = directChannel.Id
@@ -52,14 +53,16 @@ func (p *Plugin) sendMessageFromBot(_channelID string, userID string, isEphemera
 		ChannelId: channelID,
 		Message:   message,
 	}
-
 	if isEphemeralPost == true {
-		p.API.SendEphemeralPost(userID, post)
-		return nil
+		postInfo := p.API.SendEphemeralPost(userID, post)
+		return postInfo.Id, nil
 	}
 
-	p.API.CreatePost(post)
-	return nil
+	postInfo, err := p.API.CreatePost(post)
+	if err != nil {
+		return "", err
+	}
+	return postInfo.Id, nil
 
 }
 
@@ -186,7 +189,7 @@ func (p *Plugin) decodeBase64URL(urlInBase64 string) (string, error) {
 	return string(decoded), nil
 }
 
-func (p *Plugin) parseMessage(message string) (string, string, error) {
+func (p *Plugin) parseMessage(message string) (string, string, []parsemail.Attachment, error) {
 	// Use parser for email
 	reader := strings.NewReader(message)
 
@@ -194,104 +197,116 @@ func (p *Plugin) parseMessage(message string) (string, string, error) {
 	if err != nil {
 		// return details from self parsed message
 		p.API.LogInfo("Error in using parsemail package: " + err.Error())
-		return p.getMessageDetails(message)
+		return "", "", nil, err
+	}
+	attachments := []parsemail.Attachment{}
+	// Attachments
+	for _, attachment := range email.Attachments {
+		attachments = append(attachments, attachment)
 	}
 
 	// Prefer HTML if available
 	if email.HTMLBody != "" {
 		mailBody, html2mdErr := html2markdown.NewConverter("", true, nil).ConvertString(email.HTMLBody)
 		if html2mdErr == nil {
-			return email.Subject, mailBody, nil
+			return email.Subject, mailBody, attachments, nil
 		}
 		p.API.LogInfo("Error in converting html to markdown: " + html2mdErr.Error())
 	}
 
-	return email.Subject, email.TextBody, nil
+	return email.Subject, email.TextBody, attachments, nil
 }
 
-// TODO: Support "quote-printable"
-// TODO: Use net/mail package for parsing email message
-// input- message as shown in "Show Original" tab of mail
-func (p *Plugin) getMessageDetails(message string) (string, string, error) {
-	if len(message) == 0 {
-		return "", "", nil
+func (p *Plugin) getAttachmentDetails(attachment parsemail.Attachment) (string, []byte) {
+	bytesData, err := ioutil.ReadAll(attachment.Data)
+	if err != nil {
+		p.API.LogInfo("Error has occured: " + err.Error())
+		return "", []byte{}
 	}
-	// parse message line by line to find "Subject", "From", "To"
-	// split on new line character
-	linesInMessage := strings.Split(message, "\n")
-	subject := ""
-	boundary := ""
-	body := ""
-	contentTransferEncoding := ""
-	contentType := "text/plain"
-	bodyBegins := false
-	checkContentDetails := true
-	htmlBody := ""
-	for _, line := range linesInMessage {
-
-		if len(strings.TrimSpace(line)) == 0 {
-			continue
-		}
-
-		if subject == "" && strings.HasPrefix(line, "Subject") {
-			subject = line
-		} else if bodyBegins == false && strings.Contains(line, "Content-Type: multipart/alternative; boundary=") {
-			boundary = strings.Split(line, "=")[1]
-			boundary = strings.ReplaceAll(boundary, "\"", "")
-		} else if strings.HasPrefix(line, "--"+boundary) {
-			if bodyBegins {
-				checkContentDetails = true
-			} else {
-				bodyBegins = true
-			}
-		} else if bodyBegins {
-			if checkContentDetails && strings.HasPrefix(line, "Content-Transfer-Encoding:") {
-				contentTransferEncoding = strings.TrimSpace(strings.Split(line, ":")[1])
-				continue
-			}
-			if checkContentDetails && strings.HasPrefix(line, "Content-Type:") {
-				contentType = strings.TrimSpace(strings.Split(strings.Split(line, ";")[0], ":")[1])
-				continue
-			}
-			if contentType == "text/html" {
-				htmlBody += line
-			} else {
-				body += line
-			}
-			// do not check content details once body begins
-			checkContentDetails = false
-		}
-	}
-	fmt.Println("contentType:" + contentType)
-	fmt.Println(htmlBody)
-	if htmlBody != "" {
-		// Currently quoted-printable is giving errors
-		if contentTransferEncoding != "quoted-printable" {
-			finalBody, html2mdErr := html2markdown.NewConverter("", true, nil).ConvertString(htmlBody)
-			if html2mdErr != nil {
-				fmt.Println("Error in converting from html to markdown: " + html2mdErr.Error())
-			} else {
-				return subject, finalBody, nil
-			}
-		}
-	}
-
-	body = strings.ReplaceAll(body, "=\n", "\n")
-
-	finalBody := body
-	if contentTransferEncoding == "base64" {
-		body = strings.ReplaceAll(body, "\r", "")
-		body = strings.ReplaceAll(body, "\n", "")
-		finalBody, _ = p.decodeBase64URL(body)
-	}
-	// if contentTransferEncodingPlain == "quoted-printable" {
-	// 	decodedBody, quotedPrintableErr := ioutil.ReadAll(quotedprintable.NewReader(strings.NewReader(finalBody)))
-	// 	if quotedPrintableErr == nil {
-	// 		finalBody = fmt.Sprintf("%s", decodedBody)
-	// 	} else {
-	// 		fmt.Println(quotedPrintableErr)
-	// 	}
-	// }
-
-	return subject, finalBody, nil
+	return attachment.Filename, bytesData
 }
+
+// Old function, new: parseMessage
+// func (p *Plugin) getMessageDetails(message string) (string, string, error) {
+// 	if len(message) == 0 {
+// 		return "", "", nil
+// 	}
+// 	// parse message line by line to find "Subject", "From", "To"
+// 	// split on new line character
+// 	linesInMessage := strings.Split(message, "\n")
+// 	subject := ""
+// 	boundary := ""
+// 	body := ""
+// 	contentTransferEncoding := ""
+// 	contentType := "text/plain"
+// 	bodyBegins := false
+// 	checkContentDetails := true
+// 	htmlBody := ""
+// 	for _, line := range linesInMessage {
+
+// 		if len(strings.TrimSpace(line)) == 0 {
+// 			continue
+// 		}
+
+// 		if subject == "" && strings.HasPrefix(line, "Subject") {
+// 			subject = line
+// 		} else if bodyBegins == false && strings.Contains(line, "Content-Type: multipart/alternative; boundary=") {
+// 			boundary = strings.Split(line, "=")[1]
+// 			boundary = strings.ReplaceAll(boundary, "\"", "")
+// 		} else if strings.HasPrefix(line, "--"+boundary) {
+// 			if bodyBegins {
+// 				checkContentDetails = true
+// 			} else {
+// 				bodyBegins = true
+// 			}
+// 		} else if bodyBegins {
+// 			if checkContentDetails && strings.HasPrefix(line, "Content-Transfer-Encoding:") {
+// 				contentTransferEncoding = strings.TrimSpace(strings.Split(line, ":")[1])
+// 				continue
+// 			}
+// 			if checkContentDetails && strings.HasPrefix(line, "Content-Type:") {
+// 				contentType = strings.TrimSpace(strings.Split(strings.Split(line, ";")[0], ":")[1])
+// 				continue
+// 			}
+// 			if contentType == "text/html" {
+// 				htmlBody += line
+// 			} else {
+// 				body += line
+// 			}
+// 			// do not check content details once body begins
+// 			checkContentDetails = false
+// 		}
+// 	}
+// 	fmt.Println("contentType:" + contentType)
+// 	fmt.Println(htmlBody)
+// 	if htmlBody != "" {
+// 		// Currently quoted-printable is giving errors
+// 		if contentTransferEncoding != "quoted-printable" {
+// 			finalBody, html2mdErr := html2markdown.NewConverter("", true, nil).ConvertString(htmlBody)
+// 			if html2mdErr != nil {
+// 				fmt.Println("Error in converting from html to markdown: " + html2mdErr.Error())
+// 			} else {
+// 				return subject, finalBody, nil
+// 			}
+// 		}
+// 	}
+
+// 	body = strings.ReplaceAll(body, "=\n", "\n")
+
+// 	finalBody := body
+// 	if contentTransferEncoding == "base64" {
+// 		body = strings.ReplaceAll(body, "\r", "")
+// 		body = strings.ReplaceAll(body, "\n", "")
+// 		finalBody, _ = p.decodeBase64URL(body)
+// 	}
+// 	// if contentTransferEncodingPlain == "quoted-printable" {
+// 	// 	decodedBody, quotedPrintableErr := ioutil.ReadAll(quotedprintable.NewReader(strings.NewReader(finalBody)))
+// 	// 	if quotedPrintableErr == nil {
+// 	// 		finalBody = fmt.Sprintf("%s", decodedBody)
+// 	// 	} else {
+// 	// 		fmt.Println(quotedPrintableErr)
+// 	// 	}
+// 	// }
+
+// 	return subject, finalBody, nil
+// }

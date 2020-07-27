@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/mattermost/mattermost-server/v5/plugin"
+	"math"
 	"strings"
 )
 
@@ -34,6 +35,8 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		return p.handleDisconnectCommand(c, args)
 	case "import":
 		return p.handleImportCommand(c, args)
+	case "":
+		return p.handleHelpCommand(c, args)
 	case "help":
 		return p.handleHelpCommand(c, args)
 	default:
@@ -140,8 +143,41 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 		return &model.CommandResponse{}, nil
 	}
 	// Extract Subject and Body (base64url) from the message. TODO: Add attachments.
-	subject, body, _ := p.parseMessage(plainTextMessage)
-	p.sendMessageFromBot(args.ChannelId, "", false, "###### "+subject+"\n"+"###### Message:\n"+body)
+	subject, body, attachments, err := p.parseMessage(plainTextMessage)
+	if err != nil {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "An error has occured while trying to parse the mail. Please try again later or report to the System Administrator.")
+		return &model.CommandResponse{}, nil
+	}
+	fileIDArray := []string{}
+	fileNameArray := []string{}
+	for _, attachment := range attachments {
+		fileName, fileData := p.getAttachmentDetails(attachment)
+		fileInfo, fileErr := p.API.UploadFile(fileData, args.ChannelId, fileName)
+		if fileErr != nil {
+			p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Attachment "+fileName+" was not uploaded. Please report this to the System Administrator")
+		}
+		fileNameArray = append(fileNameArray, fileName)
+		fileIDArray = append(fileIDArray, fileInfo.Id)
+	}
+
+	postID, _ := p.sendMessageFromBot(args.ChannelId, "", false, "###### Date: \n"+"###### Subject: "+subject+"\n"+"###### Message Body:\n"+body)
+
+	countFiles := 0
+	parentID := postID
+	for countFiles = 0; countFiles <= len(fileIDArray); countFiles += 5 {
+		post := &model.Post{
+			UserId:    p.gmailBotID,
+			ChannelId: args.ChannelId,
+			RootId:    postID,
+			ParentId:  parentID,
+			FileIds:   fileIDArray[countFiles:int(math.Min(float64(countFiles+5), float64(len(fileIDArray))))],
+		}
+		postInfo, err := p.API.CreatePost(post)
+		if err != nil {
+			p.sendMessageFromBot(args.ChannelId, args.UserId, true, "An error has occured : "+err.Error())
+		}
+		parentID = postInfo.Id
+	}
 
 	return &model.CommandResponse{}, nil
 }
