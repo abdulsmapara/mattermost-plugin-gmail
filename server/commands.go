@@ -124,14 +124,15 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 
 	messageID, err := p.getMessageID(args.UserId, gmailID, rfcID)
 	if err != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
+		p.API.LogInfo(err.Error())
 		return &model.CommandResponse{}, nil
 	}
 	p.API.LogInfo("Extracted Message ID from rfc ID successfully")
 
 	message, err := gmailService.Users.Messages.Get(gmailID, messageID).Format("raw").Do()
 	if err != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Unable to get the mail.")
 		return &model.CommandResponse{}, nil
 	}
 	p.API.LogInfo("Message extracted successfully")
@@ -160,23 +161,26 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 		fileIDArray = append(fileIDArray, fileInfo.Id)
 	}
 
-	postID, _ := p.sendMessageFromBot(args.ChannelId, "", false, "###### Date: \n"+"###### Subject: "+subject+"\n"+"###### Message Body:\n"+body)
+	postID, _ := p.sendMessageFromBot(args.ChannelId, "", false, "###### Date: \n"+"###### Subject: "+subject+"\n"+body)
 
-	countFiles := 0
-	parentID := postID
-	for countFiles = 0; countFiles <= len(fileIDArray); countFiles += 5 {
-		post := &model.Post{
-			UserId:    p.gmailBotID,
-			ChannelId: args.ChannelId,
-			RootId:    postID,
-			ParentId:  parentID,
-			FileIds:   fileIDArray[countFiles:int(math.Min(float64(countFiles+5), float64(len(fileIDArray))))],
+	if len(fileIDArray) > 0 {
+		countFiles := 0
+		parentID := postID
+		// One Post can contain atmost 5 attachments
+		for countFiles = 0; countFiles <= len(fileIDArray); countFiles += 5 {
+			post := &model.Post{
+				UserId:    p.gmailBotID,
+				ChannelId: args.ChannelId,
+				RootId:    postID,
+				ParentId:  parentID,
+				FileIds:   fileIDArray[countFiles:int(math.Min(float64(countFiles+5), float64(len(fileIDArray))))],
+			}
+			postInfo, err := p.API.CreatePost(post)
+			if err != nil {
+				p.sendMessageFromBot(args.ChannelId, args.UserId, true, "An error has occured : "+err.Error())
+			}
+			parentID = postInfo.Id
 		}
-		postInfo, err := p.API.CreatePost(post)
-		if err != nil {
-			p.sendMessageFromBot(args.ChannelId, args.UserId, true, "An error has occured : "+err.Error())
-		}
-		parentID = postInfo.Id
 	}
 
 	return &model.CommandResponse{}, nil
