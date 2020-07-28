@@ -7,7 +7,15 @@ const (
 
 // specific to plugin sub-commands
 const (
-	helpText = "##### Mattermost Gmail Plugin\nAvailable Commands:\n" + `/gmail connect` + "- Connect your Gmail (Google mail account) with your Mattermost account\n**NOTE:** To disconnect Gmail from your Mattermost account, head over to Gmail, click on your profile picture > Select 'Manage your Google Account' > Select 'Security' > Expand 'Third Party Access' > Remove access\n" + `/gmail import mail [id]` + "- Imports a mail (message) from Gmail using ID of the mail (message)\n**Tip: ** To get ID of the mail (message), click on the 3 dots in the mail, then select 'Show Original' to obtain the Message ID.\n" + `/gmail import thread [id]` + "- Import a conversation (thread) from Gmail using ID of any message in the conversation (thread)\n" + `/gmail help` + "- Display help"
+	helpTextHeader = "###### Mattermost Gmail Plugin - Slash Command Help\n"
+
+	commonHelpText = "\n* `/gmail connect` - Connect your Mattermost account to your Gmail account\n" +
+		"* `/gmail import mail <message-id>` - Import a mail/message from Gmail using message ID.\n" +
+		"* `/gmail import thread <thread-message-id>` - Import complete Gmail thread (conversation) using ID of any mail in the thread\n" +
+		"* `/gmail help` - Display help about this plugin\n" +
+		"* Tips:\n" +
+		"	- To disconnect (command coming soon), head over to your Gmail, click on the profile picture icon, select 'Manage Your Google Account', select 'Security Issues', then select 'Third party access', and finally remove Mattermost access\n" +
+		"	- To get ID of any mail, click on the 3 dots after opening the mail, and then select 'Show Original'. You will see 'Message ID' at the top in a new tab"
 )
 
 // specific to scope required
