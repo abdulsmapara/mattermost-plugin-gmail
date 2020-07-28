@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
-
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/mattermost/mattermost-server/v5/plugin"
+	"golang.org/x/oauth2"
+	"net/http"
+	"strings"
 )
 
 // ServeHTTP allows the plugin to implement the http.Handler interface. Requests destined for the
@@ -50,7 +50,7 @@ func (p *Plugin) connectGmail(w http.ResponseWriter, r *http.Request) {
 	oAuthconfig := p.getOAuthConfig()
 
 	// Redirect user to auth URL for authentication
-	http.Redirect(w, r, oAuthconfig.AuthCodeURL(antiCSRFToken), http.StatusFound)
+	http.Redirect(w, r, oAuthconfig.AuthCodeURL(antiCSRFToken, oauth2.AccessTypeOffline, oauth2.ApprovalForce), http.StatusTemporaryRedirect)
 }
 
 func (p *Plugin) completeGmailConnection(w http.ResponseWriter, r *http.Request) {

@@ -68,7 +68,7 @@ func (p *Plugin) handleDisconnectCommand(c *plugin.Context, args *model.CommandA
 
 // handleHelpCommand posts help about the plugin
 func (p *Plugin) handleHelpCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
-	p.sendMessageFromBot(args.ChannelId, args.UserId, true, helpText)
+	p.sendMessageFromBot(args.ChannelId, args.UserId, true, helpTextHeader+commonHelpText)
 	return &model.CommandResponse{}, nil
 }
 
@@ -155,6 +155,6 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 
 // handleInvalidCommand
 func (p *Plugin) handleInvalidCommand(c *plugin.Context, args *model.CommandArgs, action string) (*model.CommandResponse, *model.AppError) {
-	p.sendMessageFromBot(args.ChannelId, args.UserId, true, "##### Unknown Command: "+action+"\n"+helpText)
+	p.sendMessageFromBot(args.ChannelId, args.UserId, true, "##### Unknown Command: "+action+"\n"+helpTextHeader+commonHelpText)
 	return &model.CommandResponse{}, nil
 }

@@ -97,7 +97,6 @@ func (p *Plugin) getGmailService(userID string) (*gmail.Service, error) {
 	config := p.getOAuthConfig()
 	ctx := context.Background()
 	tokenSource := config.TokenSource(ctx, &token)
-	tokenSource = oauth2.ReuseTokenSource(&token, tokenSource)
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(tokenSource))
 	if err != nil {
 		return nil, err
@@ -118,7 +117,6 @@ func (p *Plugin) getOAuthService(userID string) (*accessAPI.Service, error) {
 	ctx := context.Background()
 	config := p.getOAuthConfig()
 	tokenSource := config.TokenSource(ctx, &token)
-	tokenSource = oauth2.ReuseTokenSource(&token, tokenSource)
 	oauth2Service, err := accessAPI.NewService(ctx, option.WithTokenSource(tokenSource))
 	if err != nil {
 		return nil, err
