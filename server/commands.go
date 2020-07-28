@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/mattermost/mattermost-server/v5/plugin"
-	"math"
+	"google.golang.org/api/gmail/v1"
 	"strings"
 )
 
@@ -111,12 +111,22 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 			p.sendMessageFromBot(args.ChannelId, args.UserId, true, threadIDErr.Error())
 			return &model.CommandResponse{}, nil
 		}
-		thread, threadErr := gmailService.Users.Threads.Get(gmailID, threadID).Format("raw").Do()
+		thread, threadErr := gmailService.Users.Threads.Get(gmailID, threadID).Format("minimal").Do()
 		if threadErr != nil {
 			p.sendMessageFromBot(args.ChannelId, args.UserId, true, threadErr.Error())
 			return &model.CommandResponse{}, nil
 		}
-		p.sendMessageFromBot(args.ChannelId, "", false, thread.Messages[0].Raw)
+		threadMessages := []*gmail.Message{}
+		for _, messageInfo := range thread.Messages {
+			message, mailErr := gmailService.Users.Messages.Get(gmailID, messageInfo.Id).Format("raw").Do()
+			if mailErr != nil {
+				p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Unable to get the thread.")
+				return &model.CommandResponse{}, nil
+			}
+			threadMessages = append(threadMessages, message)
+		}
+		p.handleMessages(threadMessages, args.ChannelId, args.UserId)
+
 		return &model.CommandResponse{}, nil
 	}
 	// if queryType == "mail" =>
@@ -137,57 +147,14 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 	}
 	p.API.LogInfo("Message extracted successfully")
 
-	base64URLMessage := message.Raw
-	plainTextMessage, err := p.decodeBase64URL(base64URLMessage)
-	if err != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error: "+err.Error())
-		return &model.CommandResponse{}, nil
-	}
-	// Extract Subject and Body (base64url) from the message. TODO: Add attachments.
-	subject, body, attachments, err := p.parseMessage(plainTextMessage)
-	if err != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "An error has occured while trying to parse the mail. Please try again later or report to the System Administrator.")
-		return &model.CommandResponse{}, nil
-	}
-	fileIDArray := []string{}
-	fileNameArray := []string{}
-	for _, attachment := range attachments {
-		fileName, fileData := p.getAttachmentDetails(attachment)
-		fileInfo, fileErr := p.API.UploadFile(fileData, args.ChannelId, fileName)
-		if fileErr != nil {
-			p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Attachment "+fileName+" was not uploaded. Please report this to the System Administrator")
-		}
-		fileNameArray = append(fileNameArray, fileName)
-		fileIDArray = append(fileIDArray, fileInfo.Id)
-	}
-
-	postID, _ := p.sendMessageFromBot(args.ChannelId, "", false, "###### Date: \n"+"###### Subject: "+subject+"\n"+body)
-
-	if len(fileIDArray) > 0 {
-		countFiles := 0
-		parentID := postID
-		// One Post can contain atmost 5 attachments
-		for countFiles = 0; countFiles <= len(fileIDArray); countFiles += 5 {
-			post := &model.Post{
-				UserId:    p.gmailBotID,
-				ChannelId: args.ChannelId,
-				RootId:    postID,
-				ParentId:  parentID,
-				FileIds:   fileIDArray[countFiles:int(math.Min(float64(countFiles+5), float64(len(fileIDArray))))],
-			}
-			postInfo, err := p.API.CreatePost(post)
-			if err != nil {
-				p.sendMessageFromBot(args.ChannelId, args.UserId, true, "An error has occured : "+err.Error())
-			}
-			parentID = postInfo.Id
-		}
-	}
+	// Message extracted successfully
+	p.handleMessages([]*gmail.Message{message}, args.ChannelId, args.UserId)
 
 	return &model.CommandResponse{}, nil
 }
 
 // handleInvalidCommand
 func (p *Plugin) handleInvalidCommand(c *plugin.Context, args *model.CommandArgs, action string) (*model.CommandResponse, *model.AppError) {
-	p.sendMessageFromBot(args.ChannelId, args.UserId, true, "##### Unknown Command "+action+"\n"+helpText)
+	p.sendMessageFromBot(args.ChannelId, args.UserId, true, "##### Unknown Command: "+action+"\n"+helpText)
 	return &model.CommandResponse{}, nil
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"strings"
 	// "github.com/mattermost/mattermost-server/v5/mlog"
 	"github.com/DusanKasan/parsemail"
@@ -145,11 +146,14 @@ func (p *Plugin) getThreadID(userID string, gmailID string, rfcID string) (strin
 	if err != nil {
 		return "", err
 	}
-	listResponse, err := gmailService.Users.Messages.List(gmailID).Q("rfc822msgid:" + rfcID).Do()
+	listCall := gmailService.Users.Messages.List(gmailID).Q("rfc822msgid:" + rfcID)
+	listResponse, err := listCall.Do()
 	if err != nil {
 		return "", err
 	}
-
+	if len(listResponse.Messages) != 1 {
+		return "", errors.New("Invalid ID. Please provide ID of some mail in the thread")
+	}
 	return listResponse.Messages[0].ThreadId, nil
 }
 
@@ -165,7 +169,7 @@ func (p *Plugin) getMessageID(userID string, gmailID string, rfcID string) (stri
 		return "", err
 	}
 	if len(listResponse.Messages) != 1 {
-		return "", errors.New("Please provide a valid message ID")
+		return "", errors.New("Invalid ID. Please provide a valid mail ID")
 	}
 	return listResponse.Messages[0].Id, nil
 }
@@ -231,87 +235,75 @@ func (p *Plugin) getAttachmentDetails(attachment parsemail.Attachment) (string, 
 	return attachment.Filename, bytesData
 }
 
-// Old function, new: parseMessage
-// func (p *Plugin) getMessageDetails(message string) (string, string, error) {
-// 	if len(message) == 0 {
-// 		return "", "", nil
-// 	}
-// 	// parse message line by line to find "Subject", "From", "To"
-// 	// split on new line character
-// 	linesInMessage := strings.Split(message, "\n")
-// 	subject := ""
-// 	boundary := ""
-// 	body := ""
-// 	contentTransferEncoding := ""
-// 	contentType := "text/plain"
-// 	bodyBegins := false
-// 	checkContentDetails := true
-// 	htmlBody := ""
-// 	for _, line := range linesInMessage {
+func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, userID string) error {
+	if len(messages) == 0 {
+		return errors.New("No message found")
+	}
+	parentID := ""
+	rootID := ""
+	for messageIndex, message := range messages {
+		base64URLMessage := message.Raw
+		plainTextMessage, err := p.decodeBase64URL(base64URLMessage)
+		if err != nil {
+			p.sendMessageFromBot(channelID, userID, true, "Error: "+err.Error())
+			return err
+		}
 
-// 		if len(strings.TrimSpace(line)) == 0 {
-// 			continue
-// 		}
+		// Extract Subject and Body (base64url) from the message.
+		subject, body, attachments, err := p.parseMessage(plainTextMessage)
+		if err != nil {
+			p.sendMessageFromBot(channelID, userID, true, "An error has occured while trying to parse the mail. Please try again later or report to the System Administrator.")
+			return err
+		}
+		fileIDArray := []string{}
+		fileNameArray := []string{}
+		for _, attachment := range attachments {
+			fileName, fileData := p.getAttachmentDetails(attachment)
+			fileInfo, fileErr := p.API.UploadFile(fileData, channelID, fileName)
+			if fileErr != nil {
+				p.sendMessageFromBot(channelID, userID, true, "Attachment "+fileName+" was not uploaded. Please report this to the System Administrator")
+			}
+			fileNameArray = append(fileNameArray, fileName)
+			fileIDArray = append(fileIDArray, fileInfo.Id)
+		}
+		// Prepare post for posting as a response
 
-// 		if subject == "" && strings.HasPrefix(line, "Subject") {
-// 			subject = line
-// 		} else if bodyBegins == false && strings.Contains(line, "Content-Type: multipart/alternative; boundary=") {
-// 			boundary = strings.Split(line, "=")[1]
-// 			boundary = strings.ReplaceAll(boundary, "\"", "")
-// 		} else if strings.HasPrefix(line, "--"+boundary) {
-// 			if bodyBegins {
-// 				checkContentDetails = true
-// 			} else {
-// 				bodyBegins = true
-// 			}
-// 		} else if bodyBegins {
-// 			if checkContentDetails && strings.HasPrefix(line, "Content-Transfer-Encoding:") {
-// 				contentTransferEncoding = strings.TrimSpace(strings.Split(line, ":")[1])
-// 				continue
-// 			}
-// 			if checkContentDetails && strings.HasPrefix(line, "Content-Type:") {
-// 				contentType = strings.TrimSpace(strings.Split(strings.Split(line, ";")[0], ":")[1])
-// 				continue
-// 			}
-// 			if contentType == "text/html" {
-// 				htmlBody += line
-// 			} else {
-// 				body += line
-// 			}
-// 			// do not check content details once body begins
-// 			checkContentDetails = false
-// 		}
-// 	}
-// 	fmt.Println("contentType:" + contentType)
-// 	fmt.Println(htmlBody)
-// 	if htmlBody != "" {
-// 		// Currently quoted-printable is giving errors
-// 		if contentTransferEncoding != "quoted-printable" {
-// 			finalBody, html2mdErr := html2markdown.NewConverter("", true, nil).ConvertString(htmlBody)
-// 			if html2mdErr != nil {
-// 				fmt.Println("Error in converting from html to markdown: " + html2mdErr.Error())
-// 			} else {
-// 				return subject, finalBody, nil
-// 			}
-// 		}
-// 	}
+		if messageIndex == 0 {
+			rootID, _ = p.sendMessageFromBot(channelID, "", false, "**Date:**\n"+"**Subject: "+subject+"**\n"+body)
+			parentID = rootID
+		} else {
+			// Can assume that rootID is not ""
+			post := &model.Post{
+				UserId:    p.gmailBotID,
+				ChannelId: channelID,
+				RootId:    rootID,
+				ParentId:  parentID,
+				Message:   "**Date:** \n" + "**Subject: " + subject + "**\n" + body,
+			}
+			postInfo, _ := p.API.CreatePost(post)
+			parentID = postInfo.Id
+		}
 
-// 	body = strings.ReplaceAll(body, "=\n", "\n")
-
-// 	finalBody := body
-// 	if contentTransferEncoding == "base64" {
-// 		body = strings.ReplaceAll(body, "\r", "")
-// 		body = strings.ReplaceAll(body, "\n", "")
-// 		finalBody, _ = p.decodeBase64URL(body)
-// 	}
-// 	// if contentTransferEncodingPlain == "quoted-printable" {
-// 	// 	decodedBody, quotedPrintableErr := ioutil.ReadAll(quotedprintable.NewReader(strings.NewReader(finalBody)))
-// 	// 	if quotedPrintableErr == nil {
-// 	// 		finalBody = fmt.Sprintf("%s", decodedBody)
-// 	// 	} else {
-// 	// 		fmt.Println(quotedPrintableErr)
-// 	// 	}
-// 	// }
-
-// 	return subject, finalBody, nil
-// }
+		// Post attachments
+		if len(fileIDArray) > 0 {
+			countFiles := 0
+			// One Post can contain atmost 5 attachments
+			for countFiles = 0; countFiles <= len(fileIDArray); countFiles += 5 {
+				post := &model.Post{
+					UserId:    p.gmailBotID,
+					ChannelId: channelID,
+					RootId:    rootID,
+					ParentId:  parentID,
+					FileIds:   fileIDArray[countFiles:int(math.Min(float64(countFiles+5), float64(len(fileIDArray))))],
+				}
+				postInfo, err := p.API.CreatePost(post)
+				parentID = postInfo.Id
+				if err != nil {
+					p.sendMessageFromBot(channelID, userID, true, "An error has occured : "+err.Error())
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
