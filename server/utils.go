@@ -196,7 +196,7 @@ func (p *Plugin) decodeBase64URL(urlInBase64 string) (string, error) {
 	return string(decoded), nil
 }
 
-func (p *Plugin) parseMessage(message string) (string, string, []parsemail.Attachment, error) {
+func (p *Plugin) parseMessage(message string) (string, string, string, []parsemail.Attachment, error) {
 	// Use parser for email
 	reader := strings.NewReader(message)
 
@@ -204,8 +204,10 @@ func (p *Plugin) parseMessage(message string) (string, string, []parsemail.Attac
 	if err != nil {
 		// return details from self parsed message
 		p.API.LogInfo("Error in using parsemail package: " + err.Error())
-		return "", "", nil, err
+		return "", "", "", nil, err
 	}
+	year, month, day := email.Date.Date()
+	date := fmt.Sprintf("%v %v, %v", month, day, year)
 	attachments := []parsemail.Attachment{}
 	// Attachments
 	for _, attachment := range email.Attachments {
@@ -216,12 +218,12 @@ func (p *Plugin) parseMessage(message string) (string, string, []parsemail.Attac
 	if email.HTMLBody != "" {
 		mailBody, html2mdErr := html2markdown.NewConverter("", true, nil).ConvertString(email.HTMLBody)
 		if html2mdErr == nil {
-			return email.Subject, mailBody, attachments, nil
+			return email.Subject, mailBody, date, attachments, nil
 		}
 		p.API.LogInfo("Error in converting html to markdown: " + html2mdErr.Error())
 	}
 
-	return email.Subject, email.TextBody, attachments, nil
+	return email.Subject, email.TextBody, date, attachments, nil
 }
 
 func (p *Plugin) getAttachmentDetails(attachment parsemail.Attachment) (string, []byte) {
@@ -248,7 +250,7 @@ func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, use
 		}
 
 		// Extract Subject and Body (base64url) from the message.
-		subject, body, attachments, err := p.parseMessage(plainTextMessage)
+		subject, body, date, attachments, err := p.parseMessage(plainTextMessage)
 		if err != nil {
 			p.sendMessageFromBot(channelID, userID, true, "An error has occured while trying to parse the mail. Please try again later or report to the System Administrator.")
 			return err
@@ -267,7 +269,7 @@ func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, use
 		// Prepare post for posting as a response
 
 		if messageIndex == 0 {
-			rootID, _ = p.sendMessageFromBot(channelID, "", false, "**Date:**\n"+"**Subject: "+subject+"**\n"+body)
+			rootID, _ = p.sendMessageFromBot(channelID, "", false, "**Date: "+date+"**\n\n"+"**Subject: "+subject+"**\n\n"+body)
 			parentID = rootID
 		} else {
 			// Can assume that rootID is not ""
@@ -276,7 +278,7 @@ func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, use
 				ChannelId: channelID,
 				RootId:    rootID,
 				ParentId:  parentID,
-				Message:   "**Date:** \n" + "**Subject: " + subject + "**\n" + body,
+				Message:   "**Date: " + date + "** \n\n" + "**Subject: " + subject + "**\n\n" + body,
 			}
 			postInfo, _ := p.API.CreatePost(post)
 			parentID = postInfo.Id
