@@ -14,7 +14,9 @@ const manifestStr = `
 {
   "id": "mattermost-plugin-gmail",
   "name": "Mattermost Gmail Bot",
-  "description": "Integration of Mattermost with Gmail - a mail service by Google",
+  "description": "Gmail Integration for Mattermost",
+  "homepage_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail",
+  "support_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail/issues",
   "version": "0.1.0",
   "min_server_version": "5.19.0",
   "server": {
@@ -46,18 +48,18 @@ const manifestStr = `
         "default": null
       },
       {
+        "key": "TopicName",
+        "display_name": "Topic Name",
+        "type": "text",
+        "help_text": "Topic Name is used to subscribe user for notifications from Gmail.",
+        "placeholder": "Create a topic in Google Cloud pubsub",
+        "default": null
+      },
+      {
         "key": "EncryptionKey",
         "display_name": "Plugin Encryption Key",
         "type": "generated",
         "help_text": "The AES encryption key internally used in plugin to encrypt stored access tokens.",
-        "placeholder": "Generate the key and store before connecting the account",
-        "default": null
-      },
-      {
-        "key": "WebhookSecret",
-        "display_name": "Webhook Secret Key",
-        "type": "generated",
-        "help_text": "This Secret key will be used to uniquely identify incoming webhook requests if any.",
         "placeholder": "Generate the key and store before connecting the account",
         "default": null
       }

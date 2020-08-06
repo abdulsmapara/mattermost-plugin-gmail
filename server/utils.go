@@ -20,6 +20,12 @@ import (
 	"google.golang.org/api/option"
 )
 
+type subscriptionDetails struct {
+	UserID    string
+	HistoryID uint64
+	LabelIDs  []string
+}
+
 // CreateBotDMPost creates a post as gmail bot to the user directly
 func (p *Plugin) CreateBotDMPost(userID, message string) (string, error) {
 	return p.sendMessageFromBot("", userID, false, message)
@@ -65,6 +71,14 @@ func (p *Plugin) sendMessageFromBot(_channelID string, userID string, isEphemera
 	}
 	return postInfo.Id, nil
 
+}
+
+func (p *Plugin) checkIfConnected(userID string) bool {
+	accessTokenInBytes, err := p.API.KVGet(userID + "gmailToken")
+	if err != nil || accessTokenInBytes == nil {
+		return false
+	}
+	return true
 }
 
 func (p *Plugin) getOAuthConfig() *oauth2.Config {
@@ -196,7 +210,7 @@ func (p *Plugin) decodeBase64URL(urlInBase64 string) (string, error) {
 	return string(decoded), nil
 }
 
-func (p *Plugin) parseMessage(message string) (string, string, string, string, []parsemail.Attachment, error) {
+func (p *Plugin) parseMessage(message string) (string, string, string, string, string, []parsemail.Attachment, error) {
 	// Use parser for email
 	reader := strings.NewReader(message)
 
@@ -204,7 +218,7 @@ func (p *Plugin) parseMessage(message string) (string, string, string, string, [
 	if err != nil {
 		// return details from self parsed message
 		p.API.LogInfo("Error in using parsemail package: " + err.Error())
-		return "", "", "", "", nil, err
+		return "", "", "", "", "", nil, err
 	}
 	year, month, day := email.Date.Date()
 	date := fmt.Sprintf("%v %v, %v", month, day, year)
@@ -230,12 +244,12 @@ func (p *Plugin) parseMessage(message string) (string, string, string, string, [
 	if email.HTMLBody != "" {
 		mailBody, html2mdErr := html2markdown.NewConverter("", true, nil).ConvertString(email.HTMLBody)
 		if html2mdErr == nil {
-			return email.Subject, mailBody, date, fromNames, attachments, nil
+			return email.Subject, mailBody, date, fromNames, email.MessageID, attachments, nil
 		}
 		p.API.LogInfo("Error in converting html to markdown: " + html2mdErr.Error())
 	}
 
-	return email.Subject, email.TextBody, date, fromNames, attachments, nil
+	return email.Subject, email.TextBody, date, fromNames, email.MessageID, attachments, nil
 }
 
 func (p *Plugin) getAttachmentDetails(attachment parsemail.Attachment) (string, []byte) {
@@ -247,10 +261,16 @@ func (p *Plugin) getAttachmentDetails(attachment parsemail.Attachment) (string, 
 	return attachment.Filename, bytesData
 }
 
-func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, userID string) error {
+func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, userID string, notify bool) error {
 	if len(messages) == 0 {
 		return errors.New("No message found")
 	}
+
+	postAsID := userID
+	if notify {
+		postAsID = p.gmailBotID
+	}
+
 	parentID := ""
 	rootID := ""
 	for messageIndex, message := range messages {
@@ -262,7 +282,11 @@ func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, use
 		}
 
 		// Extract Subject and Body (base64url) from the message.
-		subject, body, date, from, attachments, err := p.parseMessage(plainTextMessage)
+		subject, body, date, from, rfcID, attachments, err := p.parseMessage(plainTextMessage)
+		sharingInfo := ""
+		if notify {
+			sharingInfo = "**Message ID: <" + rfcID + ">**. _(Import in any channel using `/gmail import <mail/thread> <ID>`)_\n\n"
+		}
 		if err != nil {
 			p.sendMessageFromBot(channelID, userID, true, "An error has occured while trying to parse the mail. Please try again later or report to the System Administrator.")
 			return err
@@ -286,9 +310,9 @@ func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, use
 
 		if messageIndex == 0 {
 			rootPost := &model.Post{
-				UserId:    userID,
+				UserId:    postAsID,
 				ChannelId: channelID,
-				Message:   "###### Email from : " + from + "\n\n**Date: " + date + "** \n\n" + "**Subject: " + subject + "**\n\n" + body,
+				Message:   "###### Email from : " + from + "\n\n" + sharingInfo + "**Date: " + date + "** \n\n" + "**Subject: " + subject + "**\n\n" + body,
 			}
 			rootPost, _ = p.API.CreatePost(rootPost)
 			rootID = rootPost.Id
@@ -296,11 +320,11 @@ func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, use
 		} else {
 			// Can assume that rootID is not ""
 			post := &model.Post{
-				UserId:    userID,
+				UserId:    postAsID,
 				ChannelId: channelID,
 				RootId:    rootID,
 				ParentId:  parentID,
-				Message:   "###### Email from: " + from + "\n\n**Date: " + date + "** \n\n" + "**Subject: " + subject + "**\n\n" + body,
+				Message:   "###### Email from: " + from + "\n\n" + sharingInfo + "**Date: " + date + "** \n\n" + "**Subject: " + subject + "**\n\n" + body,
 			}
 			postInfo, _ := p.API.CreatePost(post)
 			parentID = postInfo.Id
@@ -312,7 +336,7 @@ func (p *Plugin) handleMessages(messages []*gmail.Message, channelID string, use
 			// One Post can contain atmost 5 attachments
 			for countFiles = 0; countFiles <= len(fileIDArray); countFiles += 5 {
 				post := &model.Post{
-					UserId:    userID,
+					UserId:    postAsID,
 					ChannelId: channelID,
 					RootId:    rootID,
 					ParentId:  parentID,

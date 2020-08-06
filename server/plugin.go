@@ -22,6 +22,8 @@ type Plugin struct {
 	// configuration is the active plugin configuration. Consult getConfiguration and
 	// setConfiguration for usage.
 	configuration *configuration
+
+	mailNotificationDetails subscriptionDetails
 }
 
 // OnActivate is invoked when the plugin is activated. If an error is returned, the plugin will be terminated.
