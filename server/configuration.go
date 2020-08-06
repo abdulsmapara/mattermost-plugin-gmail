@@ -21,8 +21,8 @@ import (
 type configuration struct {
 	GmailOAuthClientID string
 	GmailOAuthSecret   string
+	TopicName          string
 	EncryptionKey      string
-	WebhookSecret      string
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
@@ -43,12 +43,12 @@ func (c *configuration) IsValid() error {
 		return fmt.Errorf("Must have Gmail OAuth secret entered in plugin settings")
 	}
 
-	if c.EncryptionKey == "" {
-		return fmt.Errorf("Must have Gmail key generated and stored in plugin settings")
+	if c.TopicName == "" {
+		return fmt.Errorf("Must have Topic Name entered in plugin settings")
 	}
 
-	if c.WebhookSecret == "" {
-		return fmt.Errorf("Must have Gmail secret generated and stored in plugin settings")
+	if c.EncryptionKey == "" {
+		return fmt.Errorf("Must have Encryption Key generated in plugin settings")
 	}
 
 	return nil
