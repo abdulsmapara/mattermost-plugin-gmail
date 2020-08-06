@@ -14,7 +14,7 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 ## Installation
 1. Download the latest version of the [release](https://github.com/abdulsmapara/mattermost-plugin-gmail/releases) directory. Go to `System Console` and upload the latest release in the Plugin Management section. For help on how to install a custom plugin, please refer [installing custom plugin docs](https://docs.mattermost.com/administration/plugins.html#custom-plugins).
 
-1. Next, you will need to enter Client Secret, Client ID, Topic Name and generate Encryption Key to enable the plugin successfully. Follow the below steps -
+1. Next, you will need to enter Client Secret, Client ID, Topic Name and generate Encryption Key to enable the plugin successfully -
 
-	2. To obtain Client Secret & Client ID -
-		- Go to [Google Cloud Dashboard](https://console.cloud.google.com/home/dashboard) and create a new project.
+	1. To obtain Client Secret & Client ID -
+		* Go to [Google Cloud Dashboard](https://console.cloud.google.com/home/dashboard) and create a new project.
