@@ -109,3 +109,11 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 	For help on how to install a custom plugin, please refer [installing custom plugin docs](https://docs.mattermost.com/administration/plugins.html#custom-plugins).
 
 	1. Enable the plugin in the section `Installed Plugins` on the same page.
+
+## Possible Improvements
+
+[ ] Authenticate incoming webhook from Gmail that is used to send mail notifications to users on subscription
+
+## Acknowledgments
+- Mattermost Team and Community
+- [Mattermost Google Calendar Plugin](https://github.com/mattermost/mattermost-plugin-google-calendar) for motivation
