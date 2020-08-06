@@ -7,6 +7,18 @@
 - [About the plugin](#about-the-plugin)
 - [Installation](#installation)
 - [Connecting with Gmail](#connecting-with-gmail)
+- [Usage](#usage)
+	* [Slash Commands](#slash-commands)
+		+ [connect](#connect)
+		+ [import mail](#import-mail)
+		+ [import thread](#import-thread)
+		+ [subscribe](#subscribe)
+		+ [unsubscribe](#unsubscribe)
+		+ [disconnect](#disconnect)
+		+ [help](#help)
+- [Development](#development)
+- [Possible Improvements](#possible-improvements)
+- [Acknowledgments](#acknowledgments)
 
 ## About the plugin
 The plugin connects your Gmail with Mattermost, that enables you to import Gmail messages and threads (along with attachments) to any Mattermost channel. Also, you can subscribe to get notifications on new emails. Explore the plugin and report issues, if any, to [Support-Page](https://github.com/abdulsmapara/mattermost-plugin-gmail/issues).
@@ -14,7 +26,7 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 ## Installation
 1. Download the latest version of the [release](https://github.com/abdulsmapara/mattermost-plugin-gmail/releases) directory. Go to `System Console` and upload the latest release in the Plugin Management section. For help on how to install a custom plugin, please refer [installing custom plugin docs](https://docs.mattermost.com/administration/plugins.html#custom-plugins).
 
-1. Next, you will need to enter Client Secret, Client ID, Topic Name and generate Encryption Key to enable the plugin successfully. You will also need to create a Google Pub/Sub Subscription for the plugin to function properly -
+1. Next, you will need to enter Client Secret, Client ID, Topic Name and generate Encryption Key to enable the plugin successfully. You will also need to create a Pub/Sub Subscription for the plugin to function properly -
 
 	1. To obtain Client Secret & Client ID -
 		* Go to [Google Cloud Dashboard](https://console.cloud.google.com/home/dashboard) and create a new project.
@@ -43,7 +55,7 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 		* Provide a `Subscription ID` (eg. `mattermost-plugin-gmail-subscription`)
 		* Select the Topic just created by following the above steps
 		* Select the `Delivery Type` as `Push`
-		* Enter the `Endpoint URL` as `<Mattermost-Server-URL>/plugins/mattermost-plugin-gmail/webhook/gmail` (_Currently, do not check `Enable Authentication`._)
+		* Enter the `Endpoint URL` as `<Mattermost-Server-URL>/plugins/mattermost-plugin-gmail/webhook/gmail` (_Currently, do not check the `Enable Authentication` option._)
 		* Choose `Never Expire` for `Subscription expiration`
 		* Set `Acknowledgement deadline` to anything between `10 seconds` to `600 seconds`
 		* You can let other fields being set to default values or configure them if you wish
@@ -66,3 +78,34 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 
 5. A new direct message from the Gmail Bot is also posted stating the same. With this your Gmail account is successfully connected to Mattermost.
 
+## Usage
+
+## Development
+
+1. This plugin contains only the server.
+
+2. Use `make check-style` to check the style.
+
+3. Use `make test` to test the plugin.
+
+4. Use `make dist` to build distributions of the plugin that can be uploaded to a Mattermost server
+
+5. Alternatively, use `make` to check the style, test and build distributions of the plugin that you can upload to a Mattermost server (all at once).
+
+6. Use `make deploy` to deploy the plugin to your local server. Before running `make deploy`, you need to set a few environment variables:
+	```
+		export MM_SERVICESETTINGS_SITEURL=http://localhost:8065
+		export MM_ADMIN_USERNAME=admin
+		export MM_ADMIN_PASSWORD=password
+	```
+
+7. If you want to deploy the plugin by using `System Console`:
+	
+	1. On the the server, in the file `config/config.json`, change `EnableUploads` in the `Plugin Settings` to `true`
+
+	1. Login to Mattermost server with admin privileges.
+
+	1. Headover to `System Console` and upload the tar.gz file created in `dist/` directory to the plugins section.
+	For help on how to install a custom plugin, please refer [installing custom plugin docs](https://docs.mattermost.com/administration/plugins.html#custom-plugins).
+
+	1. Enable the plugin in the section `Installed Plugins` on the same page.
