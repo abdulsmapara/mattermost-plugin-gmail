@@ -203,16 +203,25 @@ func (p *Plugin) disconnectGmail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Plugin) sendMailNotification(w http.ResponseWriter, r *http.Request) {
+	// If the body isn't of type json, then reject
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		http.Error(w, "Content types don't match", http.StatusBadRequest)
+		return
+	}
+
 	p.API.LogInfo("Received Gmail Notification")
 
-	fbody := r.Body
-
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(fbody)
+	buf.ReadFrom(r.Body)
 	body := buf.String()
 
 	var parsedBody map[string]interface{}
-	json.Unmarshal([]byte(body), &parsedBody)
+	err := json.Unmarshal([]byte(body), &parsedBody)
+	if err != nil {
+		http.Error(w, "Cannot unmarshal input json", http.StatusBadRequest)
+		return
+	}
 
 	requestMessage := parsedBody["message"].(map[string]interface{})
 	data := requestMessage["data"].(string)
@@ -221,7 +230,6 @@ func (p *Plugin) sendMailNotification(w http.ResponseWriter, r *http.Request) {
 	var parsedData map[string]interface{}
 	json.Unmarshal([]byte(decodedData), &parsedData)
 	emailAddress := parsedData["emailAddress"].(string)
-	fmt.Println(emailAddress)
 	historyID := uint64(parsedData["historyId"].(float64))
 
 	userID := p.mailNotificationDetails.UserID
@@ -254,19 +262,18 @@ func (p *Plugin) sendMailNotification(w http.ResponseWriter, r *http.Request) {
 	messages := []*gmail.Message{}
 	for _, addedMessage := range addedMessages {
 		message, _ := gmailService.Users.Messages.Get(emailAddress, addedMessage.Message.Id).Format("raw").Do()
-		fmt.Println(message)
 		messages = append(messages, message)
 	}
-	directChannel, err := p.API.GetDirectChannel(userID, p.gmailBotID)
-	if err != nil {
-		p.API.LogInfo("Could not fetch direct channel")
+	directChannel, channelErr := p.API.GetDirectChannel(userID, p.gmailBotID)
+	if channelErr != nil {
+		p.API.LogInfo("Could not fetch direct channel: " + channelErr.Error())
 		w.WriteHeader(200)
 		return
 	}
 
-	erro := p.handleMessages(messages, directChannel.Id, userID, true)
-	if erro != nil {
-		p.API.LogInfo("Message not posted: " + erro.Error())
+	msgErr := p.handleMessages(messages, directChannel.Id, userID, true)
+	if msgErr != nil {
+		p.API.LogInfo("Message not posted: " + msgErr.Error())
 	}
 
 	w.WriteHeader(200)

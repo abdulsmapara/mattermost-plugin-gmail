@@ -33,7 +33,7 @@ const manifestStr = `
     "settings": [
       {
         "key": "GmailOAuthClientID",
-        "display_name": "Google (Gmail) Client ID",
+        "display_name": "Client ID",
         "type": "text",
         "help_text": "The client ID for the OAuth app registered with Google Cloud",
         "placeholder": "Please copy client ID over from Google API console for Gmail API",
@@ -41,7 +41,7 @@ const manifestStr = `
       },
       {
         "key": "GmailOAuthSecret",
-        "display_name": "Gmail Secret",
+        "display_name": "Client Secret",
         "type": "text",
         "help_text": "The client secret for the OAuth app registered with Google Cloud.",
         "placeholder": "Please copy secret over from Google (gmail) OAuth application",
