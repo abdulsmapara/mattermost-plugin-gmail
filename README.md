@@ -1,7 +1,7 @@
 # Mattermost Gmail Plugin
 **A Gmail plugin for [Mattermost](https://mattermost.com) - Brings your gmail conversations within Mattermost**
 
-**Developer:** [@abdulsmapara](https://github.com/abdulsmapara)
+**Developer:** [Abdul Sattar Mapara](https://github.com/abdulsmapara)
 
 ## Table of content
 - [About the plugin](#about-the-plugin)
@@ -21,7 +21,7 @@
 - [Acknowledgments](#acknowledgments)
 
 ## About the plugin
-The plugin connects your Gmail with Mattermost, that enables you to import Gmail messages and threads (along with attachments) to any Mattermost channel. Also, you can subscribe to get notifications on new emails. Explore the plugin and report issues, if any, to [Support-Page](https://github.com/abdulsmapara/mattermost-plugin-gmail/issues).
+The plugin connects your Gmail with Mattermost, that enables you to import Gmail messages and threads (along with attachments) to any Mattermost channel. Also, you can subscribe to get notifications on new emails. Explore the plugin and report issues, if any, to [Issues-Section](https://github.com/abdulsmapara/mattermost-plugin-gmail/issues).
 
 ## Installation
 1. Download the latest version of the [release](https://github.com/abdulsmapara/mattermost-plugin-gmail/releases) directory. Go to `System Console` and upload the latest release in the Plugin Management section. For help on how to install a custom plugin, please refer [installing custom plugin docs](https://docs.mattermost.com/administration/plugins.html#custom-plugins).
@@ -80,6 +80,19 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 
 ## Usage
 
+#### Slash Commands
+
+###### Connect
+
+* `/gmail connect` posts a link to connect Gmail with your Mattermost account
+* Demonstration:
+
+###### Import Mail
+
+* `/gmail import mail <Message-ID>` lets you import a Gmail message in any Mattermost channel using its ID (along with its attachments, if any)
+
+
+
 ## Development
 
 1. This plugin contains only the server.
@@ -101,18 +114,20 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 
 7. If you want to deploy the plugin by using `System Console`:
 	
-	1. On the the server, in the file `config/config.json`, change `EnableUploads` in the `Plugin Settings` to `true`
+	1. On the server, in the file `config/config.json`, change `EnableUploads` in the `Plugin Settings` to `true`
 
 	1. Login to Mattermost server with admin privileges.
 
 	1. Headover to `System Console` and upload the tar.gz file created in `dist/` directory to the plugins section.
 	For help on how to install a custom plugin, please refer [installing custom plugin docs](https://docs.mattermost.com/administration/plugins.html#custom-plugins).
 
+	1. Follow instructions (2. onwards) at [Installation-Guide](#installation)
+	
 	1. Enable the plugin in the section `Installed Plugins` on the same page.
 
 ## Possible Improvements
-
-[ ] Authenticate incoming webhook from Gmail that is used to send mail notifications to users on subscription
+- [ ] Authenticate incoming webhook from Gmail that is used to send mail notifications to users on subscription (Enforce JWT authentication for incoming webhooks)
+- [ ] Add the ability to send mails from Mattermost to a desired Gmail account
 
 ## Acknowledgments
 - Mattermost Team and Community
