@@ -5,7 +5,7 @@
 
 ![Mattermost-Gmail-Plugin-Usage-Overview](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/gmail-usage-overview.png)
 
-(_The name(s) used are ficticious and for demonstration purpose_)
+_(The name(s) used are ficticious and for demonstration purpose)_
 
 ## Table of content
 - [About the plugin](#about-the-plugin)
@@ -89,7 +89,9 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 ##### Connect
 
 `/gmail connect` 
+
 	* Posts a link to connect Gmail with your Mattermost account
+
 	* Demonstration:
 	![gmail-connect-demo](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/connect-demo.gif)
 
@@ -97,47 +99,64 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 ##### Import Mail
 
 `/gmail import mail <Message-ID>` 
+
 	* This command lets you import a Gmail message in any Mattermost channel using its ID (along with its attachments, if any). 
+
 	* To obtain the message ID, click on the three dots present in the Gmail message and select `Show Original`. Message ID will be displayed at the start of the new page.
+
 	* Demonstration:
 	![gmail-import-mail-demo](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/import-mail-demo.gif)
 
 ##### Import Thread
 
 `/gmail import thread <Message-ID>` 
+
 	* This command lets you import a complete Gmail conversation in any Mattermost channel using ID of any message in the thread.
+
 	* Demonstration:
 	![gmail-import-thread-demo](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/import-thread-demo.gif)
 
 ##### Subscribe
 
 `/gmail subscribe <Optional-Label-IDs>` 
+
 	* This command lets you subscribe to notifications on recieving a mail corresponding to the Label IDs provided (should be comma-separated). 
+
 	* The Label IDs supported are: INBOX, CATEGORY_PROMOTIONS, CATEGORY_SOCIAL, CATEGORY_PERSONAL, CATEGORY_UPDATES, CATEGORY_FORUMS. To learn more about what these label IDs mean, read [here](https://developers.google.com/gmail/api/guides/labels?authuser=1#types_of_labels).
+
 	* If no label ID is provided with this command, the subscription is made on the ID - INBOX.
+
 	* Demonstration:
 	![gmail-subscribe-demo](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/subscribe-command-demo.gif)
 
 ##### Unsubscribe
 
 `/gmail unsubscribe <Optional-Label-IDs>`
+	
 	* This command lets you unsubscribe from notifications on recieving mails corressponding to the label IDs provided (should be comma-separated).
+	
 	* If no label ID is provided, unsubscription from all labels already subscribed.
+	
 	* Demonstration:
 	![gmail-unsubscribe-demo](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/unsubscribe-demo.gif)
 
 ##### Disconnect
 
 `/gmail disconnect`
+	
 	* This command deletes the information required to access your Gmail account from Mattermost.
+	
 	* Additionally, you may head over to `Manage your Google Account`, select `Security Issues` and remove access to the project corresponding to this plugin.
+	
 	* Demonstration:
 	![gmail-disconnect-demo](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/disconnect-demo.gif)
 
 ##### Help
 
 `/gmail help`
+
 	* Displays help on using the plugin
+
 	* Demonstration:
 	![gmail-help-demo](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/help-demo.gif)
 
