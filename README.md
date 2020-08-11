@@ -95,6 +95,7 @@ The plugin connects your Gmail with Mattermost, that enables you to import Gmail
 * Demonstration:
 ![gmail-connect-demo](https://github.com/abdulsmapara/Github-Media/blob/master/Gmail-Plugin/connect-demo.gif)
 
+_(Note that the prompt asking for permissions to access Gmail is not shown in the demonstration)_
 
 ##### Import Mail
 
