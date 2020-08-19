@@ -21,7 +21,7 @@ _(The name(s) used are ficticious and for demonstration purpose)_
 		+ [disconnect](#disconnect)
 		+ [help](#help)
 - [Development](#development)
-- [Possible Improvements](#possible-improvements)
+- [Todos and Possible Improvements](#todos-and-possible-improvements)
 - [Acknowledgments](#acknowledgments)
 
 ## About the plugin
@@ -193,7 +193,9 @@ _(Note that the prompt asking for permissions to access Gmail is not shown in th
 	
 	1. Enable the plugin in the section `Installed Plugins` on the same page.
 
-## Possible Improvements
+## Todos and Possible Improvements
+- [ ] User subscription information should not be stored only in memory and should persist on plugin restarts
+- [ ] Log errors that are ignored and are important
 - [ ] While connecting with Gmail, only ask users for the permissions required for using the plugin and not any additional permissions
 - [ ] Authenticate incoming webhook from Gmail that is used to send mail notifications to users on subscription (Enforce JWT authentication for incoming webhooks)
 - [ ] Add the ability to send mails from Mattermost to a desired Gmail account
