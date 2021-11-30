@@ -10,6 +10,7 @@ import (
 	"golang.org/x/oauth2"
 	"google.golang.org/api/gmail/v1"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -43,7 +44,7 @@ func (p *Plugin) connectGmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a unique ID generated to protect against CSRF attach while auth.
+	// Create a unique ID generated to protect against CSRF attack while auth.
 	antiCSRFToken := fmt.Sprintf("%v_%v", model.NewId()[0:15], authedUserID)
 
 	// Store that uniqueState for later validations in redirect from oauth
@@ -109,8 +110,6 @@ func (p *Plugin) completeGmailConnection(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	p.mailNotificationDetails.UserID = userID
-
 	// Extract the access code from the redirected url
 	accessCode := r.URL.Query().Get("code")
 
@@ -132,7 +131,15 @@ func (p *Plugin) completeGmailConnection(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	p.API.KVSet(userID+"gmailToken", tokenJSON)
+	p.API.LogInfo("Starting to onboard user with user ID: " + userID)
+	onBoardErr := p.onboardUser(userID, tokenJSON)
+	if onBoardErr != nil {
+		p.API.LogError("Error occured - Could not onboard user", "err", onBoardErr.Error())
+		p.CreateBotDMPost(userID, "Error occured while connecting to Gmail. Please try again later.")
+		return
+	}
+	p.API.LogInfo("Onboarding completed successfully for user with user ID: " + userID)
+
 	// Post intro post
 	message := "#### Welcome to the Mattermost Gmail Plugin!\n" +
 		"You've successfully connected your Mattermost account to your Gmail.\n" +
@@ -164,14 +171,14 @@ func (p *Plugin) disconnectGmail(w http.ResponseWriter, r *http.Request) {
 	actionSecretPassed := intergrationResponseFromCommand.Context["actionSecret"].(string)
 
 	if actionToBeTaken == ActionDisconnectPlugin && actionSecret == actionSecretPassed {
-		// Unique identifier
-		accessTokenIdentifier := userID + "gmailToken"
+		err := p.offboardUser(userID)
 
-		// Delete the access token from KV store
-		err := p.API.KVDelete(accessTokenIdentifier)
 		if err != nil {
 			p.API.DeleteEphemeralPost(userID, originalPostID)
-			p.sendMessageFromBot(channelID, userID, true, fmt.Sprintf("Unable to disconnect Gmail: %v", err.Error()))
+			p.sendMessageFromBot(channelID, userID, true, "Unable to disconnect Gmail. Please try again later.")
+			errorMessage := err.Error()
+			p.API.LogError("Error occured while disconnecting user from Gmail. Offboarding failed.", "err", errorMessage)
+			http.Error(w, "Error occured while disconnecting user from Gmail.", http.StatusInternalServerError)
 			return
 		}
 
@@ -181,7 +188,7 @@ func (p *Plugin) disconnectGmail(w http.ResponseWriter, r *http.Request) {
 			UserId:    p.gmailBotID,
 			ChannelId: channelID,
 			Message: fmt.Sprint(
-				":zzz: You have successfully disconnect your Gmail with Mattermost. You may also perform this steps: Gmail Profile Picture Icon > Manage Your Google Account > Security Issues > Third Party Access > Remove Access by this project.\n" +
+				":zzz: You have successfully disconnected your Gmail with Mattermost. You may also perform this steps: Gmail Profile Picture Icon > Manage Your Google Account > Security Issues > Third Party Access > Remove Access by this project.\n" +
 					"If you ever want to connect again, just use `/gmail connect`"),
 		})
 		return
@@ -192,7 +199,7 @@ func (p *Plugin) disconnectGmail(w http.ResponseWriter, r *http.Request) {
 			Id:        originalPostID,
 			UserId:    p.gmailBotID,
 			ChannelId: channelID,
-			Message:   fmt.Sprint(channelID + " "),
+			Message:   fmt.Sprint("Disconnect attempt cancelled successfully."),
 		})
 		return
 	}
@@ -231,50 +238,80 @@ func (p *Plugin) sendMailNotification(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal([]byte(decodedData), &parsedData)
 	emailAddress := parsedData["emailAddress"].(string)
 	historyID := uint64(parsedData["historyId"].(float64))
+	userIDs, _ := p.getUsersForGmail(emailAddress)
 
-	userID := p.mailNotificationDetails.UserID
+	p.API.LogInfo("Notification for users connected to gmail ID: " + emailAddress)
 
-	gmailService, srvErr := p.getGmailService(userID)
-	if srvErr != nil {
-		p.API.LogInfo("Could not get gmail service: " + srvErr.Error())
+	if len(userIDs) < 1 {
+		p.API.LogInfo("No user connected to gmail ID: " + emailAddress)
 		w.WriteHeader(200)
 		return
 	}
 
-	historyResponse, histErr := gmailService.Users.History.List(emailAddress).StartHistoryId(p.mailNotificationDetails.HistoryID).Do()
+	p.API.LogInfo(fmt.Sprintf("%d users connected to gmail ID: %s", len(userIDs), emailAddress))
 
-	if histErr != nil {
-		p.API.LogInfo("Could not fetch history details: " + histErr.Error())
-		w.WriteHeader(200)
-		return
-	}
-	if len(historyResponse.History) < 1 {
-		p.API.LogInfo("Unable to fetch history")
-		w.WriteHeader(200)
-		return
-	}
-	// Update historyID for next time
-	p.mailNotificationDetails.HistoryID = historyID
+	for _, userID := range userIDs {
+		p.API.LogInfo("Processing notification for userID: " + userID)
 
-	lastHistoryIndex := len(historyResponse.History) - 1
-	addedMessages := historyResponse.History[lastHistoryIndex].MessagesAdded
+		gmailService, srvErr := p.getGmailService(userID)
+		if srvErr != nil {
+			p.API.LogError("Could not get gmail service for user with user ID: "+userID, "err", srvErr.Error())
+			continue
+		}
 
-	messages := []*gmail.Message{}
-	for _, addedMessage := range addedMessages {
-		message, _ := gmailService.Users.Messages.Get(emailAddress, addedMessage.Message.Id).Format("raw").Do()
-		messages = append(messages, message)
-	}
-	directChannel, channelErr := p.API.GetDirectChannel(userID, p.gmailBotID)
-	if channelErr != nil {
-		p.API.LogInfo("Could not fetch direct channel: " + channelErr.Error())
-		w.WriteHeader(200)
-		return
-	}
+		lastHistoryID, err := p.getHistoryIDForUser(userID)
+		if err != nil {
+			p.API.LogError("Could not fetch history details for user with user ID: "+userID, "err", err.Error())
+			continue
+		}
 
-	msgErr := p.handleMessages(messages, directChannel.Id, userID, true)
-	if msgErr != nil {
-		p.API.LogInfo("Message not posted: " + msgErr.Error())
+		p.API.LogInfo("Fetching gmail messages using last used history ID: " + strconv.Itoa(int(lastHistoryID)))
+		historyResponse, histErr := gmailService.Users.History.List(emailAddress).StartHistoryId(lastHistoryID).Do()
+		if histErr != nil {
+			p.API.LogError("Could not fetch history response for user with user ID: "+userID, "err", histErr.Error())
+			continue
+		}
+		if len(historyResponse.History) < 1 {
+			p.API.LogInfo("Blank history response received for user with user ID: " + userID)
+			continue
+		}
+
+		lastHistoryIndex := len(historyResponse.History) - 1
+		addedMessages := historyResponse.History[lastHistoryIndex].MessagesAdded
+		messages := []*gmail.Message{}
+
+		for _, addedMessage := range addedMessages {
+			message, _ := gmailService.Users.Messages.Get(emailAddress, addedMessage.Message.Id).Format("raw").Do()
+			messages = append(messages, message)
+		}
+		p.API.LogInfo(fmt.Sprintf("%d messages received as a part of the notification, filtering based on user's subscriptions", len(messages)))
+		relevantMessages := p.getRelevantMessagesForUser(userID, messages)
+		if len(relevantMessages) < 1 {
+			p.API.LogInfo("No new relevant messages found for the user")
+			continue
+		}
+		p.API.LogInfo(fmt.Sprintf("%d messages relevant based on user's subscriptions", len(relevantMessages)))
+		directChannel, channelErr := p.API.GetDirectChannel(userID, p.gmailBotID)
+		if channelErr != nil {
+			p.API.LogError("Could not fetch direct channel for the user", "err", channelErr.Error())
+			continue
+		}
+		msgErr := p.handleMessages(relevantMessages, directChannel.Id, userID, true)
+		if msgErr != nil {
+			p.API.LogError("Message could not be posted to the user", "err", msgErr.Error())
+			continue
+		}
+		p.API.LogInfo("Updating history ID for the user")
+		updateErr := p.updateHistoryIDForUser(historyID, userID)
+		if updateErr != nil {
+			p.API.LogError("Could not update history ID for the user", "err", updateErr.Error())
+			continue
+		}
+		p.API.LogInfo("History ID updated for the user")
+
 	}
+	p.API.LogInfo(fmt.Sprintf("Processed notifications for %d users", len(userIDs)))
 
 	w.WriteHeader(200)
+	return
 }
