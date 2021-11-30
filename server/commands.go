@@ -39,6 +39,8 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		return p.handleSubscriptionCommands(c, args, action)
 	case "unsubscribe":
 		return p.handleSubscriptionCommands(c, args, action)
+	case "subscriptions":
+		return p.handleListSubscriptionsCommand(c, args)
 	case "":
 		return p.handleHelpCommand(c, args)
 	case "help":
@@ -50,6 +52,10 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 
 // handleConnectCommand connects the user with Gmail account
 func (p *Plugin) handleConnectCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+	if p.checkIfConnected(args.UserId) == true {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "You are already connected to Gmail.")
+		return &model.CommandResponse{}, nil
+	}
 	// Check if SiteURL is defined in the app
 	siteURL := p.API.GetConfig().ServiceSettings.SiteURL
 	if siteURL == nil {
@@ -67,7 +73,7 @@ func (p *Plugin) handleConnectCommand(c *plugin.Context, args *model.CommandArgs
 func (p *Plugin) handleDisconnectCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
 
 	if p.checkIfConnected(args.UserId) == false {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "You have not been connected with Gmail. Use `/gmail connect` to get connected.")
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "You are not currently connected with Gmail. Use `/gmail connect` to get connected.")
 		return &model.CommandResponse{}, nil
 	}
 
@@ -224,20 +230,19 @@ func (p *Plugin) handleSubscriptionCommands(c *plugin.Context, args *model.Comma
 		return &model.CommandResponse{}, nil
 	}
 
-	possibleLabelIDs := map[string]int{"INBOX": 1, "CATEGORY_PROMOTIONS": 2, "CATEGORY_PERSONAL": 3, "CATEGORY_SOCIAL": 4, "CATEGORY_UPDATES": 5, "CATEGORY_FORUMS": 6}
 	if action == "subscribe" {
-		return p.handleSubscribeCommand(c, args, possibleLabelIDs)
+		return p.handleSubscribeCommand(c, args)
 	}
-	return p.handleUnsubscribeCommand(c, args, possibleLabelIDs)
+	return p.handleUnsubscribeCommand(c, args)
 }
 
-// handleSubscribeCommand
-func (p *Plugin) handleSubscribeCommand(c *plugin.Context, args *model.CommandArgs, possibleLabelIDs map[string]int) (*model.CommandResponse, *model.AppError) {
+// handleSubscribeCommand updates the subscriptions of user in the KV Store
+func (p *Plugin) handleSubscribeCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
 	// `/gmail subscribe [LABELS for eg. INBOX, CATEGORY_PROMOTIONS]`
-	// if no Label specified, assume INBOX
+	// if no Label specified, assume all the supported labels
 
 	allLabelIDs := strings.TrimSpace(strings.ToUpper(strings.TrimPrefix(args.Command, "/"+commandGmail+" subscribe")))
-	labelIDs := []string{"INBOX"}
+	labelIDs := p.getSupportedLabels()
 
 	if allLabelIDs != "" {
 		labelIDs = strings.Split(allLabelIDs, ",")
@@ -245,47 +250,24 @@ func (p *Plugin) handleSubscribeCommand(c *plugin.Context, args *model.CommandAr
 
 	for labelIndex, labelID := range labelIDs {
 		labelIDs[labelIndex] = strings.TrimSpace(labelID)
-		if _, ok := possibleLabelIDs[labelIDs[labelIndex]]; !ok {
-			p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Label ID: "+labelID+" not allowed.")
+		if _, ok := supportedLabelIDs[labelIDs[labelIndex]]; !ok {
+			p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Label ID: "+labelID+" not supported")
 			return &model.CommandResponse{}, nil
 		}
 	}
 
-	gmailService, _ := p.getGmailService(args.UserId)
-	watchRequest := &gmail.WatchRequest{
-		LabelFilterAction: "include",
-		LabelIds:          labelIDs,
-		TopicName:         p.getConfiguration().TopicName,
-	}
-	gmailID, _ := p.getGmailID(args.UserId)
-	watchResponse, err := gmailService.Users.Watch(gmailID, watchRequest).Do()
-	if err != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
-		return &model.CommandResponse{}, nil
-	}
-	p.mailNotificationDetails.HistoryID = uint64(watchResponse.HistoryId)
-	if len(p.mailNotificationDetails.LabelIDs) > 0 {
-		p.mailNotificationDetails.LabelIDs = p.mailNotificationDetails.LabelIDs[:0]
-	}
-	subscriptions := ""
-	for labelIndex, labelID := range labelIDs {
-		p.mailNotificationDetails.LabelIDs = append(p.mailNotificationDetails.LabelIDs, labelID)
-		subscriptions += labelID
-		if labelIndex != len(labelIDs)-1 {
-			subscriptions += ","
-		}
-	}
-	p.sendMessageFromBot(args.ChannelId, args.UserId, true, "You have subscribed to the labels: "+subscriptions+" successfully. Any previous subscription is overwritten.")
+	p.updateSubscriptionsOfUser(args.UserId, labelIDs)
+
+	p.sendMessageFromBot(args.ChannelId, args.UserId, true, "You have subscribed to the labels: "+strings.Join(labelIDs, ",")+" successfully. Any previous subscription is overwritten.")
 	return &model.CommandResponse{}, nil
 }
 
-func (p *Plugin) handleUnsubscribeCommand(c *plugin.Context, args *model.CommandArgs, possibleLabelIDs map[string]int) (*model.CommandResponse, *model.AppError) {
+func (p *Plugin) handleUnsubscribeCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
 
 	allLabelIDs := strings.TrimSpace(strings.ToUpper(strings.TrimPrefix(args.Command, "/"+commandGmail+" unsubscribe")))
-	// default is everything present in p.mailNotificationDetails.LabelIDs
 
-	labelIDs := make([]string, len(p.mailNotificationDetails.LabelIDs))
-	copy(labelIDs, p.mailNotificationDetails.LabelIDs)
+	labelIDs, _ := p.getSubscriptionsOfUser(args.UserId)
+	subscribedIDs := labelIDs
 
 	// if not subscribed to any of the labelID
 	if len(labelIDs) == 0 {
@@ -296,12 +278,11 @@ func (p *Plugin) handleUnsubscribeCommand(c *plugin.Context, args *model.Command
 	if allLabelIDs != "" {
 		labelIDs = strings.Split(allLabelIDs, ",")
 	}
-	// Unsubscribe from all subscription labels
 
 	remainSubscribed := []string{}
 	unsubscribedTo := ""
 
-	for _, subscribedID := range p.mailNotificationDetails.LabelIDs {
+	for _, subscribedID := range subscribedIDs {
 		// user is currently subscribed to subscribedID
 		foundInGivenIDs := false
 		for _, labelID := range labelIDs {
@@ -320,33 +301,9 @@ func (p *Plugin) handleUnsubscribeCommand(c *plugin.Context, args *model.Command
 		return &model.CommandResponse{}, nil
 	}
 
-	gmailService, _ := p.getGmailService(args.UserId)
-	gmailID, _ := p.getGmailID(args.UserId)
-	stopErr := gmailService.Users.Stop(gmailID).Do()
-	if stopErr != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "An error has occured.")
-		p.API.LogInfo(stopErr.Error())
-		return &model.CommandResponse{}, nil
-	}
-	if len(remainSubscribed) != 0 {
-		watchRequest := &gmail.WatchRequest{
-			LabelFilterAction: "include",
-			LabelIds:          remainSubscribed,
-			TopicName:         p.getConfiguration().TopicName,
-		}
-		watchResponse, err := gmailService.Users.Watch(gmailID, watchRequest).Do()
-		if err != nil {
-			p.sendMessageFromBot(args.ChannelId, args.UserId, true, "An error has occured. You have been unsubscribed from all label IDs. Please subscribe again.")
-			p.API.LogInfo(err.Error())
-			return &model.CommandResponse{}, nil
-		}
-		p.mailNotificationDetails.HistoryID = uint64(watchResponse.HistoryId)
-		p.mailNotificationDetails.LabelIDs = p.mailNotificationDetails.LabelIDs[:0]
-
-	}
+	p.updateSubscriptionsOfUser(args.UserId, remainSubscribed)
 	remainSubscribedMessage := ""
 	for labelIndex, labelID := range remainSubscribed {
-		p.mailNotificationDetails.LabelIDs = append(p.mailNotificationDetails.LabelIDs, labelID)
 		remainSubscribedMessage += labelID
 		if labelIndex != len(remainSubscribed)-1 {
 			remainSubscribedMessage += ", "
@@ -355,10 +312,24 @@ func (p *Plugin) handleUnsubscribeCommand(c *plugin.Context, args *model.Command
 	if remainSubscribedMessage != "" {
 		remainSubscribedMessage = "You are currently subscribed to the labels: " + remainSubscribedMessage
 	} else {
-		remainSubscribedMessage = "Currently, you have no active subscriptions."
+		remainSubscribedMessage = "Currently, you have no active subscriptions"
 	}
 
 	p.sendMessageFromBot(args.ChannelId, args.UserId, true, "You have successfully unsubscribed from the labels: "+unsubscribedTo+" .\n"+remainSubscribedMessage)
+	return &model.CommandResponse{}, nil
+}
+
+func (p *Plugin) handleListSubscriptionsCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+	if p.checkIfConnected(args.UserId) == false {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "You are not currently connected with Gmail. Use `/gmail connect` to get connected.")
+		return &model.CommandResponse{}, nil
+	}
+	subscriptions, _ := p.getSubscriptionsOfUser(args.UserId)
+	if len(subscriptions) == 0 {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "You have not subscribed to any labels. Please use `/gmail subscribe <Label IDs>` to subscribe.")
+		return &model.CommandResponse{}, nil
+	}
+	p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Currently, you are subscribed to the label IDs: "+strings.Join(subscriptions, ", "))
 	return &model.CommandResponse{}, nil
 }
 

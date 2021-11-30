@@ -15,8 +15,9 @@ const manifestStr = `
   "id": "mattermost-plugin-gmail",
   "name": "Mattermost Gmail Bot",
   "description": "Gmail Integration for Mattermost",
-  "homepage_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail",
+  "homepage_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail/blob/master/README.md",
   "support_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail/issues",
+  "release_notes_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail/blob/master/CHANGELOG.md",
   "version": "0.1.0",
   "min_server_version": "5.19.0",
   "server": {
