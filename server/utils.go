@@ -269,7 +269,7 @@ func (p *Plugin) getUsersForGmail(gmailID string) ([]string, error) {
 }
 
 // updateSubscriptionsOfUser updates subscriptions of the user
-func (p *Plugin) updateSubscriptionsOfUser(userID string, labelIDs []string) error {
+func (p *Plugin) updateSubscriptionsOfUser(userID string, labelIDs []string) *model.AppError {
 	return p.API.KVSet(userID+"subscriptions", []byte(strings.Join(labelIDs, ",")))
 }
 
@@ -285,7 +285,7 @@ func (p *Plugin) removeAllSubscriptionsOfUser(userID string) error {
 }
 
 // updateHistoryIDForGmail updates historyID of the user
-func (p *Plugin) updateHistoryIDForUser(historyID uint64, userID string) error {
+func (p *Plugin) updateHistoryIDForUser(historyID uint64, userID string) *model.AppError {
 	return p.API.KVSet(userID+"historyID", []byte(strconv.Itoa(int(historyID))))
 }
 
