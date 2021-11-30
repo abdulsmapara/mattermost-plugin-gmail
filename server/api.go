@@ -240,7 +240,7 @@ func (p *Plugin) sendMailNotification(w http.ResponseWriter, r *http.Request) {
 	historyID := uint64(parsedData["historyId"].(float64))
 	userIDs, _ := p.getUsersForGmail(emailAddress)
 
-	p.API.LogInfo("Notification for users connected to gmail ID: " + emailAddress)
+	p.API.LogInfo("Received Gmail notification for users connected to gmail ID: " + emailAddress)
 
 	if len(userIDs) < 1 {
 		p.API.LogInfo("No user connected to gmail ID: " + emailAddress)
@@ -311,7 +311,6 @@ func (p *Plugin) sendMailNotification(w http.ResponseWriter, r *http.Request) {
 
 	}
 	p.API.LogInfo(fmt.Sprintf("Processed notifications for %d users", len(userIDs)))
-
 	w.WriteHeader(200)
 	return
 }
