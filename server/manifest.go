@@ -18,7 +18,7 @@ const manifestStr = `
   "homepage_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail/blob/master/README.md",
   "support_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail/issues",
   "release_notes_url": "https://github.com/abdulsmapara/mattermost-plugin-gmail/blob/master/CHANGELOG.md",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "min_server_version": "5.19.0",
   "server": {
     "executables": {
