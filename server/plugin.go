@@ -22,8 +22,6 @@ type Plugin struct {
 	// configuration is the active plugin configuration. Consult getConfiguration and
 	// setConfiguration for usage.
 	configuration *configuration
-
-	mailNotificationDetails subscriptionDetails
 }
 
 // OnActivate is invoked when the plugin is activated. If an error is returned, the plugin will be terminated.
@@ -43,7 +41,7 @@ func (p *Plugin) OnActivate() error {
 		Trigger:          commandGmail,
 		AutoComplete:     true,
 		AutoCompleteHint: "[command]",
-		AutoCompleteDesc: "Available Commands: connect, import, help",
+		AutoCompleteDesc: "Available Commands: connect, disconnect, subscribe, unsubscribe, import, subscriptions, help",
 	}); err != nil {
 		errorMessage := "failed to register command " + commandGmail
 		p.API.LogError(errorMessage, "err", err.Error())
@@ -58,7 +56,7 @@ func (p *Plugin) OnActivate() error {
 		Description: "Created by Mattermost Gmail Plugin.",
 	}
 
-	// Ensure the bot. If not present create an Issue Resolver bot
+	// Ensure the bot. If not present create Gmail bot
 	gmailBotID, err := p.Helpers.EnsureBot(gmailBot)
 	if err != nil {
 		p.API.LogError("Failed to ensure gmail bot ", "err", err.Error())
