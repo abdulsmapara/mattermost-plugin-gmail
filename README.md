@@ -121,7 +121,7 @@ _(Note that the prompt asking for permissions to access Gmail is not shown in th
 
 `/gmail subscribe <Optional-Label-IDs>` 
 
-* This command lets you subscribe to notifications on recieving a mail corresponding to the Label IDs provided (should be comma-separated). 
+* This command lets you subscribe to notifications on receiving a mail corresponding to the Label IDs provided (should be comma-separated). 
 
 * The Label IDs supported are: INBOX, CATEGORY_PROMOTIONS, CATEGORY_SOCIAL, CATEGORY_PERSONAL, CATEGORY_UPDATES, CATEGORY_FORUMS. To learn more about what these label IDs mean, read [here](https://developers.google.com/gmail/api/guides/labels?authuser=1#types_of_labels).
 
@@ -134,7 +134,7 @@ _(Note that the prompt asking for permissions to access Gmail is not shown in th
 
 `/gmail unsubscribe <Optional-Label-IDs>`
 	
-* This command lets you unsubscribe from notifications on recieving mails corressponding to the label IDs provided (should be comma-separated).
+* This command lets you unsubscribe from notifications on receiving mails corressponding to the label IDs provided (should be comma-separated).
 
 * If no label ID is provided, unsubscription from all labels already subscribed.
 
