@@ -85,7 +85,7 @@ func (p *Plugin) OnActivate() error {
 	// Set the profile image to bot via API
 	errInSetProfileImage := p.API.SetProfileImage(gmailBotID, botProfileImage)
 	if errInSetProfileImage != nil {
-		return errors.Wrap(err, "Could not set the profile image")
+		return errors.Wrap(errInSetProfileImage, "Could not set the profile image")
 	}
 
 	return nil

@@ -84,16 +84,13 @@ func (p *Plugin) handleDisconnectCommand(c *plugin.Context, args *model.CommandA
 		return &model.CommandResponse{}, nil
 	}
 
-	actionSecret := p.getConfiguration().EncryptionKey
-
 	deleteButton := &model.PostAction{
 		Type: model.POST_ACTION_TYPE_BUTTON,
 		Name: "Disconnect",
 		Integration: &model.PostActionIntegration{
 			URL: fmt.Sprintf("%s/plugins/%s/command/disconnect", *siteURL, manifest.Id),
 			Context: map[string]interface{}{
-				"action":       ActionDisconnectPlugin,
-				"actionSecret": actionSecret,
+				"action":  		ActionDisconnectPlugin,
 			},
 		},
 	}
@@ -105,7 +102,6 @@ func (p *Plugin) handleDisconnectCommand(c *plugin.Context, args *model.CommandA
 			URL: fmt.Sprintf("%s/plugins/%s/command/disconnect", *siteURL, manifest.Id),
 			Context: map[string]interface{}{
 				"action":       ActionCancel,
-				"actionSecret": actionSecret,
 			},
 		},
 	}
@@ -162,9 +158,10 @@ func (p *Plugin) handleImportCommand(c *plugin.Context, args *model.CommandArgs)
 	}
 	rfcID := arguments[3]
 
-	gmailID, err := p.getGmailID(args.UserId)
-	if err != nil {
-		p.sendMessageFromBot(args.ChannelId, args.UserId, true, err.Error())
+	gmailIDBytes, kvErr := p.API.KVGet(args.UserId + "gmailID")
+	gmailID := string(gmailIDBytes)
+	if kvErr != nil {
+		p.sendMessageFromBot(args.ChannelId, args.UserId, true, "Error in retreiving required info from the store. Please try again after some time.")
 		return &model.CommandResponse{}, nil
 	}
 

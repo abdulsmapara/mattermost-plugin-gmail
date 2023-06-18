@@ -1,15 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
 	"strconv"
 	"strings"
-	// "github.com/mattermost/mattermost-server/v5/mlog"
 	"github.com/DusanKasan/parsemail"
 	html2markdown "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/mattermost/mattermost-server/v5/model"
@@ -19,6 +20,9 @@ import (
 	"google.golang.org/api/gmail/v1"
 	accessAPI "google.golang.org/api/oauth2/v2" // Package oauth2 provides access to the Google OAuth2 API
 	"google.golang.org/api/option"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 )
 
 // CreateBotDMPost creates a post as gmail bot to the user directly
@@ -97,13 +101,13 @@ func (p *Plugin) getOAuthConfig() *oauth2.Config {
 func (p *Plugin) getGmailService(userID string) (*gmail.Service, error) {
 	var token oauth2.Token
 
-	tokenInByte, appErr := p.API.KVGet(userID + "gmailToken")
-	if appErr != nil || tokenInByte == nil {
-		p.API.LogError("Error occured while getting gmail token", "err", appErr)
-		return nil, errors.New(appErr.DetailedError)
+	unencryptedToken, err := p.getToken(userID)
+	if err != nil {
+		p.API.LogError("Failed to decrypt access token", "err", err.Error())
+		return nil, err
 	}
 
-	json.Unmarshal(tokenInByte, &token)
+	json.Unmarshal(unencryptedToken, &token)
 	config := p.getOAuthConfig()
 	ctx := context.Background()
 	tokenSource := config.TokenSource(ctx, &token)
@@ -119,9 +123,9 @@ func (p *Plugin) getGmailService(userID string) (*gmail.Service, error) {
 func (p *Plugin) getOAuthService(userID string) (*accessAPI.Service, error) {
 	var token oauth2.Token
 
-	tokenInByte, appErr := p.API.KVGet(userID + "gmailToken")
-	if appErr != nil {
-		return nil, errors.New(appErr.DetailedError)
+	tokenInByte, err := p.getToken(userID)
+	if err != nil {
+		return nil, err
 	}
 	json.Unmarshal(tokenInByte, &token)
 	ctx := context.Background()
@@ -135,8 +139,8 @@ func (p *Plugin) getOAuthService(userID string) (*accessAPI.Service, error) {
 	return oauth2Service, nil
 }
 
-// getGmailID retrieves the gmail ID of the user
-func (p *Plugin) getGmailID(userID string) (string, error) {
+// fetchAndStoreGmailIDForUser retrieves the gmail ID of the user and stores it
+func (p *Plugin) fetchAndStoreGmailIDForUser(userID string) (string, error) {
 	gmailID, kvErr := p.API.KVGet(userID + "gmailID")
 	if kvErr == nil && gmailID != nil {
 		return string(gmailID), nil
@@ -146,8 +150,11 @@ func (p *Plugin) getGmailID(userID string) (string, error) {
 		return "", err
 	}
 	userInfo, err := oauth2Service.Userinfo.Get().Do()
-	if err != nil || userInfo == nil {
+	if err != nil {
 		return "", err
+	}
+	if userInfo == nil {
+		return "", errors.New("userinfo from oauth2Service is nil")
 	}
 	p.API.KVSet(userID+"gmailID", []byte(userInfo.Email))
 	return userInfo.Email, nil
@@ -201,22 +208,15 @@ func (p *Plugin) removeUserForGmail(gmailID string, userID string) error {
 // onboardUser onboards user to the plugin when connected to a Gmail account
 func (p *Plugin) onboardUser(userID string, tokenJSON []byte) error {
 
-	err := p.API.KVSet(userID+"gmailToken", tokenJSON)
+	err := p.setToken(userID, tokenJSON)
 	if err != nil {
 		p.API.LogError("Error in setting gmail token", "err", err.Error())
 		return err
 	}
-
-	gmailID, gmailErr := p.getGmailID(userID)
+	gmailID, gmailErr := p.fetchAndStoreGmailIDForUser(userID)
 	if gmailErr != nil {
 		p.API.LogError("Error in getting gmail ID for the user with user ID: "+userID, "err", gmailErr.Error())
 		return gmailErr
-	}
-
-	err = p.API.KVSet(userID+"gmailID", []byte(gmailID))
-	if err != nil {
-		p.API.LogError("Error in setting gmail ID as "+gmailID+" for the user with user ID: "+userID, "err", err.Error())
-		return err
 	}
 
 	gmailErr = p.addUserForGmail(gmailID, userID)
@@ -234,13 +234,47 @@ func (p *Plugin) onboardUser(userID string, tokenJSON []byte) error {
 	return nil
 }
 
+// set token
+func (p *Plugin) setToken(userID string, tokenJSON[] byte) error {
+
+	encryptedToken, err := encrypt([]byte(p.getConfiguration().EncryptionKey), string(tokenJSON))
+	if err != nil {
+		return errors.Wrap(err, "error occurred while encrypting access token")
+	}
+
+	tokenJSON = []byte(encryptedToken)
+
+	if err := p.API.KVSet(userID+"gmailToken", tokenJSON); err != nil {
+		return errors.Wrap(err, "error occurred while trying to store user info into KV store")
+	}
+
+	return nil
+}
+
+func (p *Plugin) getToken(userID string) ([]byte, error) {
+	encryptedToken, appErr := p.API.KVGet(userID + "gmailToken")
+	if appErr != nil || encryptedToken == nil {
+		p.API.LogError("Error occured while getting gmail token", "err", appErr)
+		return nil, errors.Wrap(appErr, appErr.DetailedError)
+	}
+	unencryptedToken, err := decrypt([]byte(p.getConfiguration().EncryptionKey), string(encryptedToken))
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to decrypt access token")
+	}
+	return []byte(unencryptedToken), nil
+}
+
+
 // offboardUser off boards user from the plugin when disconnected from Gmail
 func (p *Plugin) offboardUser(userID string) error {
 	p.API.LogInfo("Offboarding user with userID: " + userID)
 
-	gmailID, _ := p.getGmailID(userID)
+	gmailID, kvErr := p.API.KVGet(userID + "gmailID")
+	if kvErr != nil {
+		return kvErr
+	}
 
-	err := p.removeUserForGmail(gmailID, userID)
+	err := p.removeUserForGmail(string(gmailID), userID)
 	if err != nil {
 		return err
 	}
@@ -550,4 +584,75 @@ func (p *Plugin) getSupportedLabels() []string {
 		labels = append(labels, label)
 	}
 	return labels
+}
+
+
+
+
+
+func encrypt(key []byte, text string) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", errors.Wrap(err, "could not create a cipher block, check key")
+	}
+
+	msg := pad([]byte(text))
+	ciphertext := make([]byte, aes.BlockSize+len(msg))
+	iv := ciphertext[:aes.BlockSize]
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return "", errors.Wrap(err, "readFull was unsuccessful, check buffer size")
+	}
+
+	cfb := cipher.NewCFBEncrypter(block, iv)
+	cfb.XORKeyStream(ciphertext[aes.BlockSize:], msg)
+	finalMsg := base64.URLEncoding.EncodeToString(ciphertext)
+	return finalMsg, nil
+}
+
+func decrypt(key []byte, text string) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", errors.Wrap(err, "could not create a cipher block, check key")
+	}
+
+	decodedMsg, err := base64.URLEncoding.DecodeString(text)
+	if err != nil {
+		return "", errors.Wrap(err, "could not decode the message")
+	}
+
+	if (len(decodedMsg) % aes.BlockSize) != 0 {
+		return "", errors.New("blocksize must be multiple of decoded message length")
+	}
+
+	iv := decodedMsg[:aes.BlockSize]
+	msg := decodedMsg[aes.BlockSize:]
+
+	cfb := cipher.NewCFBDecrypter(block, iv)
+	cfb.XORKeyStream(msg, msg)
+
+	unpadMsg, err := unpad(msg)
+	if err != nil {
+		return "", errors.Wrap(err, "unpad error, check key")
+	}
+
+	return string(unpadMsg), nil
+}
+
+func pad(src []byte) []byte {
+	padding := aes.BlockSize - len(src)%aes.BlockSize
+	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(src, padtext...)
+}
+
+
+
+func unpad(src []byte) ([]byte, error) {
+	length := len(src)
+	unpadding := int(src[length-1])
+
+	if unpadding > length {
+		return nil, errors.New("unpad error. This could happen when incorrect encryption key is used")
+	}
+
+	return src[:(length - unpadding)], nil
 }
