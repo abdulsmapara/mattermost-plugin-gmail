@@ -62,20 +62,6 @@ func (p *Plugin) connectGmail(w http.ResponseWriter, r *http.Request) {
 
 func (p *Plugin) completeGmailConnection(w http.ResponseWriter, r *http.Request) {
 
-	htmlMessage := `
-	<!DOCTYPE html>
-	<html>
-		<head>
-			<script>
-				window.close();
-			</script>
-		</head>
-		<body>
-			<p>Completed connecting to Gmail successfully. Please close this window and head back to the Mattermost application.</p>
-		</body>
-	</html>
-	`
-
 	// Check if we were redirected from Mattermost pages
 	authUserID := r.Header.Get("Mattermost-User-ID")
 	if authUserID == "" {
@@ -121,6 +107,7 @@ func (p *Plugin) completeGmailConnection(w http.ResponseWriter, r *http.Request)
 	// Exchange the access code for access token from Google (gmail) token url
 	token, appErr := oauthConf.Exchange(ctx, accessCode)
 	if appErr != nil {
+		p.API.LogError("Error while exchanging access code for access token from Gmail token url", "err", appErr.Error())
 		http.Error(w, appErr.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -138,7 +125,7 @@ func (p *Plugin) completeGmailConnection(w http.ResponseWriter, r *http.Request)
 		p.CreateBotDMPost(userID, "Error occured while connecting to Gmail. Please try again later.")
 		return
 	}
-	p.API.LogInfo("Onboarding completed successfully for user with user ID: " + userID)
+	p.API.LogDebug("Onboarding completed successfully for user with user ID: " + userID)
 
 	// Post intro post
 	message := "#### Welcome to the Mattermost Gmail Plugin!\n" +
@@ -148,7 +135,7 @@ func (p *Plugin) completeGmailConnection(w http.ResponseWriter, r *http.Request)
 	p.CreateBotDMPost(userID, message)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	fmt.Fprint(w, htmlMessage)
+	fmt.Fprint(w, htmlMessageOnCompletingGmailConnection)
 
 }
 
@@ -164,13 +151,11 @@ func (p *Plugin) disconnectGmail(w http.ResponseWriter, r *http.Request) {
 	intergrationResponseFromCommand := model.PostActionIntegrationRequestFromJson(r.Body)
 
 	userID := intergrationResponseFromCommand.UserId
-	actionToBeTaken := intergrationResponseFromCommand.Context["action"].(string)
+	actionToBeTaken, _ := intergrationResponseFromCommand.Context["action"].(string)
 	channelID := intergrationResponseFromCommand.ChannelId
 	originalPostID := intergrationResponseFromCommand.PostId
-	actionSecret := p.getConfiguration().EncryptionKey
-	actionSecretPassed := intergrationResponseFromCommand.Context["actionSecret"].(string)
 
-	if actionToBeTaken == ActionDisconnectPlugin && actionSecret == actionSecretPassed {
+	if actionToBeTaken == ActionDisconnectPlugin {
 		err := p.offboardUser(userID)
 
 		if err != nil {
@@ -188,13 +173,13 @@ func (p *Plugin) disconnectGmail(w http.ResponseWriter, r *http.Request) {
 			UserId:    p.gmailBotID,
 			ChannelId: channelID,
 			Message: fmt.Sprint(
-				":zzz: You have successfully disconnected your Gmail with Mattermost. You may also perform this steps: Gmail Profile Picture Icon > Manage Your Google Account > Security Issues > Third Party Access > Remove Access by this project.\n" +
+				":zzz: You have successfully disconnected your Gmail with Mattermost. You may also perform these steps: Gmail Profile Picture Icon > Manage Your Google Account > Security Issues > Third Party Access > Remove Access by this project.\n" +
 					"If you ever want to connect again, just use `/gmail connect`"),
 		})
 		return
 	}
 
-	if actionToBeTaken == ActionCancel && actionSecret == actionSecretPassed {
+	if actionToBeTaken == ActionCancel {
 		p.API.UpdateEphemeralPost(userID, &model.Post{
 			Id:        originalPostID,
 			UserId:    p.gmailBotID,
@@ -217,8 +202,7 @@ func (p *Plugin) sendMailNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p.API.LogInfo("Received Gmail Notification")
-
+	p.API.LogDebug("Received Gmail Notification")
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(r.Body)
 	body := buf.String()

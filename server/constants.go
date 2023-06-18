@@ -26,6 +26,22 @@ const (
 	ActionCancel = "ActionCancel"
 )
 
+const (
+	htmlMessageOnCompletingGmailConnection = `
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<script>
+				window.close();
+			</script>
+		</head>
+		<body>
+			<p>Completed connecting to Gmail successfully. Please close this window and head back to the Mattermost application.</p>
+		</body>
+	</html>
+	`
+)
+
 // specific to scope required
 const (
 	emailScope = "https://www.googleapis.com/auth/userinfo.email"
